@@ -23,6 +23,7 @@ import {
   Barcode,
   Scan,
   Info,
+  ShieldAlert,
 } from "lucide-react"
 
 // =====================================================================
@@ -60,6 +61,7 @@ export interface MaterialParaEditar {
   qrCode: string | null
   fotoUrl: string | null
   situacao: "ATIVO" | "INATIVO"
+  requerAprovacao: boolean
 }
 
 interface EditarMaterialModalProps {
@@ -483,6 +485,7 @@ export default function EditarMaterialModal({ material, onClose, onSalvo }: Edit
   const [codigoBarras, setCodigoBarras] = useState(material.codigoBarras ?? "")
   const [qrCode, setQrCode] = useState(material.qrCode ?? "")
   const [situacao, setSituacao] = useState<"ATIVO" | "INATIVO">(material.situacao)
+  const [requerAprovacao, setRequerAprovacao] = useState(material.requerAprovacao)
 
   const [estoqueMinimo, setEstoqueMinimo] = useState(String(material.estoqueMinimo || ""))
   const [estoqueIdeal, setEstoqueIdeal] = useState(String(material.estoqueIdeal || ""))
@@ -628,6 +631,7 @@ export default function EditarMaterialModal({ material, onClose, onSalvo }: Edit
         descricao: descricao.trim() || null,
         categoriaId,
         unidadeMedidaId,
+        requerAprovacao,
         marca: marca.trim() || null,
         fabricante: fabricante.trim() || null,
         modelo: modelo.trim() || null,
@@ -915,6 +919,26 @@ export default function EditarMaterialModal({ material, onClose, onSalvo }: Edit
               $on={situacao === "ATIVO"}
               type="button"
               onClick={() => setSituacao(situacao === "ATIVO" ? "INATIVO" : "ATIVO")}
+              disabled={bloqueado}
+            />
+          </SwitchLinha>
+        </Secao>
+
+        <Secao>
+          <SecaoTitulo>
+            <ShieldAlert size={14} />
+            Controle de retirada
+          </SecaoTitulo>
+          <SwitchLinha>
+            <span>
+              {requerAprovacao
+                ? "Requer aprovação do supervisor pra sair"
+                : "Sai direto, sem aprovação"}
+            </span>
+            <Switch
+              $on={requerAprovacao}
+              type="button"
+              onClick={() => setRequerAprovacao((v) => !v)}
               disabled={bloqueado}
             />
           </SwitchLinha>

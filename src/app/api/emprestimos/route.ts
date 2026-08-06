@@ -1,0 +1,250 @@
+import { NextRequest, NextResponse } from "next/server"
+import { z } from "zod"
+import { prisma } from "@/lib/prisma"
+import { requireAuth, requireRole } from "@/lib/require-role"
+import { Prisma, StatusEmprestimo, Role } from "@prisma/client"
+import { randomUUID } from "crypto"
+
+const LIMIT_PADRAO = 30
+const LIMIT_MAXIMO = 100
+const PAPEIS_APROVADORES = new Set<Role>(["ADMIN", "GESTOR", "SUPERVISOR"])
+
+// GET /api/emprestimos?status=EMPRESTADO&materialId=xxx&loteId=xxx&cursor=xxx&limit=30
+export async function GET(request: NextRequest) {
+  const guard = await requireAuth()
+  if (guard instanceof NextResponse) return guard
+
+  const { searchParams } = new URL(request.url)
+  const status = searchParams.get("status") as StatusEmprestimo | null
+  const materialId = searchParams.get("materialId")
+  const loteId = searchParams.get("loteId")
+  const cursor = searchParams.get("cursor")
+  const limitParam = Number(searchParams.get("limit") ?? LIMIT_PADRAO)
+  const limit = Math.min(Math.max(limitParam || LIMIT_PADRAO, 1), LIMIT_MAXIMO)
+
+  // Sincroniza EMPRESTADO -> ATRASADO de forma preguiçosa, sem depender
+  // só do cron diário pra refletir a realidade na lista.
+  await prisma.emprestimo.updateMany({
+    where: { status: "EMPRESTADO", dataPrevistaDevolucao: { lt: new Date() } },
+    data: { status: "ATRASADO" },
+  })
+
+  // Busca contagens para o resumo
+  const [emprestados, atrasados, pendentesAprovacao] = await Promise.all([
+    prisma.emprestimo.count({ where: { status: "EMPRESTADO" } }),
+    prisma.emprestimo.count({ where: { status: "ATRASADO" } }),
+    prisma.emprestimo.count({ where: { status: "PENDENTE_APROVACAO" } }),
+  ])
+
+  const where: Prisma.EmprestimoWhereInput = {}
+  if (status && Object.values(StatusEmprestimo).includes(status)) where.status = status
+  if (materialId) where.materialId = materialId
+  if (loteId) where.loteId = loteId
+
+  const emprestimos = await prisma.emprestimo.findMany({
+    where,
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    orderBy: { createdAt: "desc" },
+    include: {
+      material: { 
+        select: { 
+          id: true, 
+          nome: true, 
+          codigoInterno: true, 
+          fotoUrl: true,
+          unidadeMedida: { select: { sigla: true } }
+        } 
+      },
+      responsavel: { select: { id: true, name: true } },
+      aprovador: { select: { id: true, name: true } },
+    },
+  })
+
+  const temMais = emprestimos.length > limit
+  const pagina = temMais ? emprestimos.slice(0, limit) : emprestimos
+  const nextCursor = temMais ? pagina[pagina.length - 1].id : null
+
+  return NextResponse.json({
+    emprestimos: pagina.map((e) => ({ ...e, quantidade: Number(e.quantidade) })),
+    nextCursor,
+    resumo: { 
+      ativos: emprestados + atrasados, 
+      atrasados, 
+      pendentesAprovacao 
+    },
+  })
+}
+
+// POST /api/emprestimos
+const itemSchema = z.object({
+  materialId: z.string().min(1),
+  quantidade: z.coerce.number().positive(),
+})
+
+const criarEmprestimoSchema = z.object({
+  itens: z.array(itemSchema).min(1, "Selecione ao menos um item"),
+  solicitanteNome: z.string().trim().min(2).max(150),
+  solicitanteSetor: z.string().trim().max(100).optional().nullable(),
+  solicitanteFuncao: z.string().trim().max(100).optional().nullable(),
+  dataPrevistaDevolucao: z.coerce.date(),
+  observacoes: z.string().trim().max(500).optional().nullable(),
+})
+
+export async function POST(request: NextRequest) {
+  const guard = await requireRole(["ADMIN", "GESTOR", "SUPERVISOR", "ALMOXARIFE"])
+  if (guard instanceof NextResponse) return guard
+
+  const responsavelId = guard.user.id
+  const lancadorEhAprovador = PAPEIS_APROVADORES.has(guard.user.role)
+
+  const body = await request.json().catch(() => ({}))
+  const parsed = criarEmprestimoSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Dados inválidos", detalhes: parsed.error.flatten() },
+      { status: 400 }
+    )
+  }
+
+  const dados = parsed.data
+
+  if (dados.dataPrevistaDevolucao <= new Date()) {
+    return NextResponse.json(
+      { error: "Data prevista de devolução deve ser no futuro" },
+      { status: 400 }
+    )
+  }
+
+  const materialIds = dados.itens.map((i) => i.materialId)
+  if (new Set(materialIds).size !== materialIds.length) {
+    return NextResponse.json(
+      { error: "Não é possível emprestar o mesmo material duas vezes na mesma requisição" },
+      { status: 400 }
+    )
+  }
+
+  const materiais = await prisma.material.findMany({
+    where: { id: { in: materialIds } },
+    include: { unidadeMedida: true },
+  })
+  if (materiais.length !== materialIds.length) {
+    return NextResponse.json({ error: "Um ou mais materiais não foram encontrados" }, { status: 404 })
+  }
+
+  const materiaisPorId = new Map(materiais.map((m) => [m.id, m]))
+
+  for (const item of dados.itens) {
+    const material = materiaisPorId.get(item.materialId)!
+    if (material.situacao === "INATIVO") {
+      return NextResponse.json(
+        { error: `"${material.nome}" está inativo e não pode ser emprestado` },
+        { status: 409 }
+      )
+    }
+    if (material.unidadeMedida.tipo === "INTEIRA" && item.quantidade % 1 !== 0) {
+      return NextResponse.json(
+        { error: `A unidade de "${material.nome}" não aceita valores fracionados.` },
+        { status: 400 }
+      )
+    }
+    // Item pendente de aprovação não reserva estoque, então não bloqueia
+    // por saldo aqui — a checagem real acontece na aprovação.
+    const precisaAprovacao = material.requerAprovacao && !lancadorEhAprovador
+    if (!precisaAprovacao && Number(material.estoqueAtual) < item.quantidade) {
+      return NextResponse.json({ error: `Estoque insuficiente de "${material.nome}"` }, { status: 409 })
+    }
+  }
+
+  const loteId = dados.itens.length > 1 ? randomUUID() : null
+  const agora = new Date()
+
+  try {
+    const resultado = await prisma.$transaction(async (tx) => {
+      const criados = []
+
+      for (const item of dados.itens) {
+        const material = materiaisPorId.get(item.materialId)!
+        const precisaAprovacao = material.requerAprovacao && !lancadorEhAprovador
+
+        if (precisaAprovacao) {
+          const emprestimo = await tx.emprestimo.create({
+            data: {
+              materialId: material.id,
+              quantidade: item.quantidade,
+              solicitanteNome: dados.solicitanteNome,
+              solicitanteSetor: dados.solicitanteSetor || null,
+              solicitanteFuncao: dados.solicitanteFuncao || null,
+              loteId,
+              dataPrevistaDevolucao: dados.dataPrevistaDevolucao,
+              observacoes: dados.observacoes || null,
+              status: "PENDENTE_APROVACAO",
+              aprovacaoNecessaria: true,
+              responsavelId,
+            },
+          })
+          criados.push(emprestimo)
+          continue
+        }
+
+        const estoqueAnterior = Number(material.estoqueAtual)
+        const estoqueNovo = estoqueAnterior - item.quantidade
+        if (estoqueNovo < 0) {
+          throw new Error(`ESTOQUE_INSUFICIENTE:${material.nome}`)
+        }
+
+        const emprestimo = await tx.emprestimo.create({
+          data: {
+            materialId: material.id,
+            quantidade: item.quantidade,
+            solicitanteNome: dados.solicitanteNome,
+            solicitanteSetor: dados.solicitanteSetor || null,
+            solicitanteFuncao: dados.solicitanteFuncao || null,
+            loteId,
+            dataPrevistaDevolucao: dados.dataPrevistaDevolucao,
+            observacoes: dados.observacoes || null,
+            status: "EMPRESTADO",
+            aprovacaoNecessaria: material.requerAprovacao,
+            // se pulou aprovação por já ser supervisor+, registra a
+            // auto-aprovação — mantém o histórico honesto
+            ...(material.requerAprovacao ? { aprovadorId: responsavelId, dataAprovacao: agora } : {}),
+            responsavelId,
+          },
+        })
+
+        await tx.movimentacaoEstoque.create({
+          data: {
+            materialId: material.id,
+            tipo: "SAIDA",
+            quantidade: item.quantidade,
+            quantidadeAnterior: estoqueAnterior,
+            quantidadeAtual: estoqueNovo,
+            motivo: `Empréstimo para ${dados.solicitanteNome}`,
+            usuarioId: responsavelId,
+            emprestimoId: emprestimo.id,
+          },
+        })
+
+        await tx.material.update({
+          where: { id: material.id },
+          data: { estoqueAtual: estoqueNovo },
+        })
+
+        criados.push(emprestimo)
+      }
+
+      return criados
+    })
+
+    return NextResponse.json(
+      { emprestimos: resultado.map((e) => ({ ...e, quantidade: Number(e.quantidade) })), loteId },
+      { status: 201 }
+    )
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("ESTOQUE_INSUFICIENTE:")) {
+      const nomeMaterial = err.message.split(":")[1]
+      return NextResponse.json({ error: `Estoque insuficiente de "${nomeMaterial}"` }, { status: 409 })
+    }
+    throw err
+  }
+}

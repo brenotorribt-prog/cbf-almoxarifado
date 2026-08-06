@@ -31,6 +31,7 @@ import {
   MapPin,
   Barcode,
   Scan,
+  ShieldAlert,
 } from "lucide-react"
 
 // =====================================================================
@@ -423,6 +424,56 @@ const InputFileOculto = styled.input`
   display: none;
 `
 
+// -------- Switch de aprovação --------
+
+const SwitchLinha = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  ${glassCardStyles}
+  background: ${({ theme }) => theme.colors.surface.glass};
+  padding: ${({ theme }) => theme.spacing[3]};
+`
+
+const Switch = styled.button<{ $on: boolean }>`
+  width: 34px;
+  height: 20px;
+  border-radius: ${({ theme }) => theme.radii.full};
+  background: ${({ theme, $on }) => ($on ? theme.colors.status.warning : theme.colors.neutral[700])};
+  position: relative;
+  flex-shrink: 0;
+  transition: background ${({ theme }) => theme.transitions.fast};
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: ${({ $on }) => ($on ? "16px" : "2px")};
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: ${({ theme }) => theme.colors.neutral.white};
+    transition: left ${({ theme }) => theme.transitions.fast};
+  }
+`
+
+const SwitchTexto = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  strong {
+    font-size: ${({ theme }) => theme.typography.fontSize.sm};
+    color: ${({ theme }) => theme.colors.text.primary};
+    font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+  }
+
+  span {
+    font-size: ${({ theme }) => theme.typography.fontSize.xs};
+    color: ${({ theme }) => theme.colors.text.muted};
+  }
+`
+
 // -------- rodapé --------
 
 const ModalActions = styled.div`
@@ -493,6 +544,9 @@ export default function CadastroMaterialModal({ onClose, onCadastrado }: Cadastr
   const [localizacaoFisica, setLocalizacaoFisica] = useState("")
   const [codigoBarras, setCodigoBarras] = useState("")
   const [qrCode, setQrCode] = useState("")
+
+  // controle de aprovação
+  const [requerAprovacao, setRequerAprovacao] = useState(false)
 
   // estoque — opcional no cadastro, ajustável depois
   const [estoqueMinimo, setEstoqueMinimo] = useState("")
@@ -666,6 +720,7 @@ export default function CadastroMaterialModal({ onClose, onCadastrado }: Cadastr
         descricao: descricao.trim() || null,
         categoriaId,
         unidadeMedidaId,
+        requerAprovacao,
         marca: marca.trim() || null,
         fabricante: fabricante.trim() || null,
         modelo: modelo.trim() || null,
@@ -851,6 +906,29 @@ export default function CadastroMaterialModal({ onClose, onCadastrado }: Cadastr
               </FotoInfo>
             )}
           </FotoUploadArea>
+        </Secao>
+
+        {/* ---------------- Controle de retirada ---------------- */}
+        <Secao>
+          <SecaoTitulo>
+            <ShieldAlert size={14} />
+            Controle de retirada
+          </SecaoTitulo>
+          <SwitchLinha>
+            <SwitchTexto>
+              <strong>Requer aprovação para sair</strong>
+              <span>
+                Empréstimo ou saída desse item vai precisar de aprovação de um
+                supervisor antes de deixar o almoxarifado.
+              </span>
+            </SwitchTexto>
+            <Switch
+              $on={requerAprovacao}
+              type="button"
+              onClick={() => setRequerAprovacao((v) => !v)}
+              disabled={bloqueado}
+            />
+          </SwitchLinha>
         </Secao>
 
         {/* ---------------- Especificações ---------------- */}

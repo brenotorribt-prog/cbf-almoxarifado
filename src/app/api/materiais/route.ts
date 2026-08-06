@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
       m.id, m."numeroSequencial", m."codigoInterno", m."codigoBarras", m."qrCode",
       m.nome, m.descricao, m.marca, m.fabricante, m.modelo, m."numeroSerie",
       m."estoqueMinimo", m."estoqueIdeal", m."estoqueMaximo", m."estoqueAtual",
-      m."localizacaoFisica", m.situacao, m."fotoUrl",
+      m."localizacaoFisica", m.situacao, m."fotoUrl", m."requerAprovacao",
       m."createdAt", m."updatedAt",
       c.id as "categoriaId", c.nome as "categoriaNome",
       u.id as "unidadeMedidaId", u.sigla as "unidadeSigla", u.nome as "unidadeNome",
@@ -110,6 +110,8 @@ const criarMaterialSchema = z
 
     categoriaId: z.string().min(1, "Categoria é obrigatória"),
     unidadeMedidaId: z.string().min(1, "Unidade de medida é obrigatória"),
+
+    requerAprovacao: z.boolean().default(false),
 
     marca: z.string().trim().max(80).optional().nullable(),
     fabricante: z.string().trim().max(80).optional().nullable(),
@@ -202,6 +204,7 @@ export async function POST(request: NextRequest) {
           descricao: dados.descricao || null,
           categoriaId: dados.categoriaId,
           unidadeMedidaId: dados.unidadeMedidaId,
+          requerAprovacao: dados.requerAprovacao,
           marca: dados.marca || null,
           fabricante: dados.fabricante || null,
           modelo: dados.modelo || null,
@@ -278,6 +281,7 @@ interface RowMaterial {
   localizacaoFisica: string | null
   situacao: "ATIVO" | "INATIVO"
   fotoUrl: string | null
+  requerAprovacao: boolean
   createdAt: Date
   updatedAt: Date
   categoriaId: string
@@ -316,6 +320,7 @@ function mapearMaterial(row: RowMaterial) {
     localizacaoFisica: row.localizacaoFisica,
     situacao: row.situacao,
     fotoUrl: row.fotoUrl,
+    requerAprovacao: row.requerAprovacao,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     categoria: { id: row.categoriaId, nome: row.categoriaNome },

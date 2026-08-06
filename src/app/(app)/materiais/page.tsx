@@ -64,6 +64,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Hash,
+  ShieldAlert,
 } from "lucide-react"
 import CadastroMaterialModal, { MaterialCriado } from "@/components/materiais/modals/cadastro"
 import EditarMaterialModal, { MaterialParaEditar } from "@/components/materiais/modals/editar"
@@ -95,6 +96,7 @@ interface Material {
   localizacaoFisica: string | null
   situacao: Situacao
   fotoUrl: string | null
+  requerAprovacao: boolean
   createdAt: string
   updatedAt: string
   categoria: { id: string; nome: string }
@@ -482,7 +484,16 @@ export default function MateriaisPage() {
                     </RowThumb>
 
                     <RowInfo>
-                      <RowNome>{material.nome}</RowNome>
+                      <RowNomeLinha>
+  <RowNome>{material.nome}</RowNome>
+  {material.requerAprovacao && (
+    <ShieldAlert 
+      size={12} 
+      color={theme.colors.status.warning} 
+      aria-label="Requer aprovação para sair" 
+    />
+  )}
+</RowNomeLinha>
                       {/* REV: código agora com rótulo, antes aparecia "pelado" */}
                       <RowMeta>
                         <Hash size={10} />
@@ -620,6 +631,12 @@ function ModalDetalhes({
               <Hash size={11} />
               <RowCodigo>{material.codigoInterno}</RowCodigo>
             </CodigoLinha>
+            {material.requerAprovacao && (
+              <AprovacaoBadge>
+                <ShieldAlert size={12} />
+                Requer aprovação do supervisor pra sair
+              </AprovacaoBadge>
+            )}
           </ModalTopoInfo>
           <ModalTopoActions>
             <FecharButton onClick={onEditar} title="Editar">
@@ -1134,6 +1151,17 @@ const RowInfo = styled.div`
   gap: 2px;
 `
 
+const RowNomeLinha = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+
+  svg {
+    flex-shrink: 0;
+  }
+`
+
 const RowNome = styled.span`
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
   font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
@@ -1350,6 +1378,21 @@ const CodigoLinha = styled.div`
   gap: 4px;
   margin-top: 4px;
   color: ${({ theme }) => theme.colors.text.muted};
+`
+
+const AprovacaoBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: ${({ theme }) => theme.radii.full};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+  color: ${({ theme }) => theme.colors.status.warning};
+  background: ${({ theme }) => theme.colors.status.warningBg};
+  border: 1px solid ${({ theme }) => theme.colors.status.warningBorder};
 `
 
 const ModalTopoActions = styled.div`

@@ -58,6 +58,8 @@ const editarMaterialSchema = z
     categoriaId: z.string().min(1).optional(),
     unidadeMedidaId: z.string().min(1).optional(),
 
+    requerAprovacao: z.boolean().optional(),
+
     marca: z.string().trim().max(80).optional().nullable(),
     fabricante: z.string().trim().max(80).optional().nullable(),
     modelo: z.string().trim().max(80).optional().nullable(),

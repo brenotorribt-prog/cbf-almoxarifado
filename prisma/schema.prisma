@@ -1,5 +1,5 @@
 // =====================================================================
-// SCHEMA - CBF Almoxarifado (CORRIGIDO)
+// SCHEMA - CBF Almoxarifado (COM APROVAÇÃO DE EMPRÉSTIMO)
 // =====================================================================
 
 generator client {
@@ -22,10 +22,6 @@ enum Role {
   SOLICITANTE
 }
 
-// NOVO: status de aprovação de acesso do usuário.
-// Diferente de `ativo` (que hoje serve pro login funcionar), este enum
-// permite diferenciar quem nunca foi avaliado (PENDENTE) de quem foi
-// avaliado e negado (REJEITADO) — útil pra listar/filtrar na tela de configs.
 enum UserStatus {
   PENDENTE
   APROVADO
@@ -41,9 +37,6 @@ enum TipoMovimentacao {
   ENTRADA
   SAIDA
   AJUSTE
-  // Baixa de material que já estava em posse de um usuário/setor (quebrou,
-  // é consumível e não retorna, etc). Não mexe em estoqueAtual de novo —
-  // só fecha a conta do que ainda está "em posse" de alguém.
   DESCARTE
 }
 
@@ -88,10 +81,12 @@ enum AgendamentoStatus {
 }
 
 enum StatusEmprestimo {
+  PENDENTE_APROVACAO
   EMPRESTADO
   DEVOLVIDO
   ATRASADO
   PERDIDO
+  REJEITADO
 }
 
 enum TipoItemCompra {
@@ -125,15 +120,14 @@ enum NotificacaoTipo {
   PEDIDO_COMPRA_ATUALIZADO
   ALERTA_ESTOQUE_BAIXO
   ALERTA_ESTOQUE_MAXIMO
-  // NOVO: opcional, mas útil pra avisar o próprio usuário quando seu
-  // acesso for aprovado/rejeitado (e opcionalmente avisar admins de
-  // novo cadastro pendente).
   ACESSO_APROVADO
   ACESSO_REJEITADO
   NOVO_CADASTRO_PENDENTE
+  EMPRESTIMO_PENDENTE_APROVACAO
+  EMPRESTIMO_APROVADO
+  EMPRESTIMO_REJEITADO
 }
 
-// NOVO: enum para unidades de medida
 enum TipoUnidade {
   INTEIRA
   FRACIONADA
@@ -146,10 +140,6 @@ enum TipoUnidade {
 model User {
   id String @id @default(cuid())
 
-  // `name` continua existindo pois o NextAuth usa esse campo internamente
-  // (session, callbacks, adapter). É derivado automaticamente de
-  // `nome + sobrenome` no momento do cadastro — não precisa ser digitado
-  // separado, nem os dois ficam dessincronizados manualmente.
   name      String
   nome      String
   sobrenome String
@@ -160,22 +150,15 @@ model User {
   password      String?
   role          Role      @default(SOLICITANTE)
 
-  // ALTERADO: agora nasce false. Só vira true quando um ADMIN aprova
-  // o acesso (ver bloco de aprovação abaixo). O `auth.ts` de vocês já
-  // bloqueia login quando `ativo` é false, então login fica protegido
-  // automaticamente sem precisar mexer no authorize().
   ativo Boolean @default(false)
 
-  // NOVO: bloco de aprovação de acesso -----------------------------
   status         UserStatus @default(PENDENTE)
   aprovadoPorId  String?
   aprovadoPor    User?      @relation("UserAprovadoPor", fields: [aprovadoPorId], references: [id])
   dataAprovacao  DateTime?
   motivoRejeicao String?
 
-  // Inverso da relação acima: um ADMIN pode ter aprovado vários usuários
   usuariosAprovados User[] @relation("UserAprovadoPor")
-  // -------------------------------------------------------------------
 
   setor     String?
   cargo     String?
@@ -192,6 +175,7 @@ model User {
   solicitacoesAprovadas  Solicitacao[]          @relation("SolicitacaoAprovadaPor")
   solicitacoesPreparadas Solicitacao[]          @relation("SolicitacaoPreparadaPor")
   emprestimosResponsavel Emprestimo[]           @relation("EmprestimoResponsavel")
+  emprestimosAprovados   Emprestimo[]           @relation("EmprestimoAprovadoPor")
   logsAuditoria          LogAuditoria[]
   pedidosCompraCriados   PedidoCompra[]         @relation("PedidoCompraCriadoPor")
   itensCompraRecebidos   ItemPedidoCompra[]     @relation("ItemPedidoCompraRecebidoPor")
@@ -305,6 +289,7 @@ model Material {
   localizacaoFisica String?
   situacao          StatusMaterial @default(ATIVO)
   fotoUrl           String?
+  requerAprovacao   Boolean        @default(false)
 
   criadoPorId String
   criadoPor   User   @relation("MaterialCriadoPor", fields: [criadoPorId], references: [id])
@@ -348,6 +333,9 @@ model MovimentacaoEstoque {
   solicitacaoId String?      @unique
   solicitacao   Solicitacao? @relation(fields: [solicitacaoId], references: [id])
 
+  emprestimoId String?
+  emprestimo   Emprestimo? @relation(fields: [emprestimoId], references: [id])
+
   movimentacaoOrigemId String?
   movimentacaoOrigem   MovimentacaoEstoque?  @relation("Devolucao", fields: [movimentacaoOrigemId], references: [id])
   devolucoes           MovimentacaoEstoque[] @relation("Devolucao")
@@ -357,6 +345,7 @@ model MovimentacaoEstoque {
   @@index([materialId])
   @@index([tipo])
   @@index([createdAt])
+  @@index([emprestimoId])
 }
 
 // =====================================================================
@@ -400,7 +389,6 @@ model Solicitacao {
   dataInicioPreparo DateTime?
   dataFimPreparo    DateTime?
 
-  // Relação 1:1 com Agendamento - CORRIGIDO
   agendamentoId String?      @unique
   agendamento   Agendamento?
 
@@ -427,7 +415,6 @@ model Solicitacao {
 model Agendamento {
   id String @id @default(cuid())
 
-  // Relação 1:1 com Solicitacao - AQUI É ONDE FICA O @relation
   solicitacaoId String      @unique
   solicitacao   Solicitacao @relation(fields: [solicitacaoId], references: [id])
 
@@ -469,6 +456,9 @@ model Emprestimo {
 
   solicitanteNome  String
   solicitanteSetor String?
+  solicitanteFuncao String?
+
+  loteId String?
 
   dataRetirada          DateTime  @default(now())
   dataPrevistaDevolucao DateTime
@@ -477,11 +467,20 @@ model Emprestimo {
   status      StatusEmprestimo @default(EMPRESTADO)
   observacoes String?
 
+  aprovacaoNecessaria Boolean @default(false)
+
+  aprovadorId    String?
+  aprovador      User?     @relation("EmprestimoAprovadoPor", fields: [aprovadorId], references: [id])
+  dataAprovacao  DateTime?
+  motivoRejeicao String?
+
   responsavelId String
   responsavel   User   @relation("EmprestimoResponsavel", fields: [responsavelId], references: [id])
 
   solicitacaoId String?      @unique
   solicitacao   Solicitacao? @relation(fields: [solicitacaoId], references: [id])
+
+  movimentacoes MovimentacaoEstoque[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -489,6 +488,7 @@ model Emprestimo {
   @@index([status])
   @@index([materialId])
   @@index([dataPrevistaDevolucao])
+  @@index([loteId])
 }
 
 // =====================================================================
