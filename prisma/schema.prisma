@@ -1,0 +1,628 @@
+// =====================================================================
+// SCHEMA - CBF Almoxarifado (CORRIGIDO)
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =====================================================================
+// ENUMS
+// =====================================================================
+
+enum Role {
+  ADMIN
+  GESTOR
+  SUPERVISOR
+  ALMOXARIFE
+  SOLICITANTE
+}
+
+// NOVO: status de aprovação de acesso do usuário.
+// Diferente de `ativo` (que hoje serve pro login funcionar), este enum
+// permite diferenciar quem nunca foi avaliado (PENDENTE) de quem foi
+// avaliado e negado (REJEITADO) — útil pra listar/filtrar na tela de configs.
+enum UserStatus {
+  PENDENTE
+  APROVADO
+  REJEITADO
+}
+
+enum StatusMaterial {
+  ATIVO
+  INATIVO
+}
+
+enum TipoMovimentacao {
+  ENTRADA
+  SAIDA
+  AJUSTE
+  // Baixa de material que já estava em posse de um usuário/setor (quebrou,
+  // é consumível e não retorna, etc). Não mexe em estoqueAtual de novo —
+  // só fecha a conta do que ainda está "em posse" de alguém.
+  DESCARTE
+}
+
+enum TipoSolicitacao {
+  SAIDA
+  EMPRESTIMO
+  TRANSFERENCIA
+}
+
+enum StatusSolicitacao {
+  RASCUNHO
+  PENDENTE
+  EM_PREPARACAO
+  PRONTO
+  ENTREGUE
+  APROVADA
+  REJEITADA
+  CANCELADA
+  AGENDADA
+  EM_ANDAMENTO
+  FINALIZADA
+}
+
+enum Prioridade {
+  BAIXA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
+enum TipoAgendamento {
+  RETIRADA
+  ENTREGA
+  INSTALACAO
+}
+
+enum AgendamentoStatus {
+  AGENDADO
+  CONFIRMADO
+  CANCELADO
+  REALIZADO
+}
+
+enum StatusEmprestimo {
+  EMPRESTADO
+  DEVOLVIDO
+  ATRASADO
+  PERDIDO
+}
+
+enum TipoItemCompra {
+  MATERIAL_EXISTENTE
+  MATERIAL_NOVO
+}
+
+enum StatusItemCompra {
+  PENDENTE
+  RECEBIDO
+  CANCELADO
+}
+
+enum StatusPedidoCompra {
+  ABERTO
+  PARCIALMENTE_RECEBIDO
+  CONCLUIDO
+  CANCELADO
+}
+
+enum NotificacaoTipo {
+  SOLICITACAO_CRIADA
+  SOLICITACAO_APROVADA
+  SOLICITACAO_REJEITADA
+  SOLICITACAO_PREPARANDO
+  SOLICITACAO_PRONTA
+  SOLICITACAO_ENTREGUE
+  SOLICITACAO_CANCELADA
+  AGENDAMENTO_CONFIRMADO
+  EMPRESTIMO_ATRASADO
+  PEDIDO_COMPRA_ATUALIZADO
+  ALERTA_ESTOQUE_BAIXO
+  ALERTA_ESTOQUE_MAXIMO
+  // NOVO: opcional, mas útil pra avisar o próprio usuário quando seu
+  // acesso for aprovado/rejeitado (e opcionalmente avisar admins de
+  // novo cadastro pendente).
+  ACESSO_APROVADO
+  ACESSO_REJEITADO
+  NOVO_CADASTRO_PENDENTE
+}
+
+// NOVO: enum para unidades de medida
+enum TipoUnidade {
+  INTEIRA
+  FRACIONADA
+}
+
+// =====================================================================
+// AUTENTICAÇÃO (NextAuth v5 / Auth.js - Prisma Adapter)
+// =====================================================================
+
+model User {
+  id String @id @default(cuid())
+
+  // `name` continua existindo pois o NextAuth usa esse campo internamente
+  // (session, callbacks, adapter). É derivado automaticamente de
+  // `nome + sobrenome` no momento do cadastro — não precisa ser digitado
+  // separado, nem os dois ficam dessincronizados manualmente.
+  name      String
+  nome      String
+  sobrenome String
+
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          Role      @default(SOLICITANTE)
+
+  // ALTERADO: agora nasce false. Só vira true quando um ADMIN aprova
+  // o acesso (ver bloco de aprovação abaixo). O `auth.ts` de vocês já
+  // bloqueia login quando `ativo` é false, então login fica protegido
+  // automaticamente sem precisar mexer no authorize().
+  ativo Boolean @default(false)
+
+  // NOVO: bloco de aprovação de acesso -----------------------------
+  status         UserStatus @default(PENDENTE)
+  aprovadoPorId  String?
+  aprovadoPor    User?      @relation("UserAprovadoPor", fields: [aprovadoPorId], references: [id])
+  dataAprovacao  DateTime?
+  motivoRejeicao String?
+
+  // Inverso da relação acima: um ADMIN pode ter aprovado vários usuários
+  usuariosAprovados User[] @relation("UserAprovadoPor")
+  // -------------------------------------------------------------------
+
+  setor     String?
+  cargo     String?
+  telefone  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  materiaisCadastrados   Material[]             @relation("MaterialCriadoPor")
+  movimentacoes          MovimentacaoEstoque[]  @relation("MovimentacaoUsuario")
+  solicitacoesCriadas    Solicitacao[]          @relation("SolicitacaoCriadaPor")
+  solicitacoesAprovadas  Solicitacao[]          @relation("SolicitacaoAprovadaPor")
+  solicitacoesPreparadas Solicitacao[]          @relation("SolicitacaoPreparadaPor")
+  emprestimosResponsavel Emprestimo[]           @relation("EmprestimoResponsavel")
+  logsAuditoria          LogAuditoria[]
+  pedidosCompraCriados   PedidoCompra[]         @relation("PedidoCompraCriadoPor")
+  itensCompraRecebidos   ItemPedidoCompra[]     @relation("ItemPedidoCompraRecebidoPor")
+  agendamentos           Agendamento[]          @relation("AgendamentoUsuario")
+  notificacoes           Notificacao[]          @relation("NotificacaoUsuario")
+  statusHistory          StatusHistory[]
+
+  @@index([role])
+  @@index([email])
+  @@index([status])
+  @@index([ativo])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// =====================================================================
+// CADASTROS BASE
+// =====================================================================
+
+model Categoria {
+  id        String   @id @default(cuid())
+  nome      String   @unique
+  descricao String?
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  materiais     Material[]
+  pedidosCompra PedidoCompra[] @relation("PedidoCompraArea")
+
+  @@index([nome])
+}
+
+model UnidadeMedida {
+  id        String   @id @default(cuid())
+  sigla     String   @unique
+  nome      String
+  tipo      TipoUnidade @default(INTEIRA)
+  createdAt DateTime @default(now())
+
+  materiais Material[]
+
+  @@index([sigla])
+}
+
+// =====================================================================
+// MATERIAIS
+// =====================================================================
+
+model Material {
+  id String @id @default(cuid())
+
+  numeroSequencial Int    @unique @default(autoincrement())
+  codigoInterno    String @unique
+
+  codigoBarras String? @unique
+  qrCode       String? @unique
+
+  nome      String
+  descricao String?
+
+  categoriaId String
+  categoria   Categoria @relation(fields: [categoriaId], references: [id])
+
+  unidadeMedidaId String
+  unidadeMedida   UnidadeMedida @relation(fields: [unidadeMedidaId], references: [id])
+
+  marca       String?
+  fabricante  String?
+  modelo      String?
+  numeroSerie String?
+
+  estoqueMinimo Decimal @default(0) @db.Decimal(12, 3)
+  estoqueIdeal  Decimal @default(0) @db.Decimal(12, 3)
+  estoqueMaximo Decimal @default(0) @db.Decimal(12, 3)
+  estoqueAtual  Decimal @default(0) @db.Decimal(12, 3)
+
+  localizacaoFisica String?
+  situacao          StatusMaterial @default(ATIVO)
+  fotoUrl           String?
+
+  criadoPorId String
+  criadoPor   User   @relation("MaterialCriadoPor", fields: [criadoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movimentacoes     MovimentacaoEstoque[]
+  solicitacoes      Solicitacao[]
+  emprestimos       Emprestimo[]
+  itensPedidoCompra ItemPedidoCompra[]
+
+  @@index([categoriaId])
+  @@index([situacao])
+  @@index([nome])
+  @@index([codigoInterno])
+}
+
+// =====================================================================
+// MOVIMENTAÇÕES DE ESTOQUE
+// =====================================================================
+
+model MovimentacaoEstoque {
+  id String @id @default(cuid())
+
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+
+  tipo TipoMovimentacao
+
+  quantidade         Decimal @db.Decimal(12, 3)
+  quantidadeAnterior Decimal @db.Decimal(12, 3)
+  quantidadeAtual    Decimal @db.Decimal(12, 3)
+
+  motivo              String?
+  documentoReferencia String?
+
+  usuarioId String
+  usuario   User   @relation("MovimentacaoUsuario", fields: [usuarioId], references: [id])
+
+  solicitacaoId String?      @unique
+  solicitacao   Solicitacao? @relation(fields: [solicitacaoId], references: [id])
+
+  movimentacaoOrigemId String?
+  movimentacaoOrigem   MovimentacaoEstoque?  @relation("Devolucao", fields: [movimentacaoOrigemId], references: [id])
+  devolucoes           MovimentacaoEstoque[] @relation("Devolucao")
+
+  createdAt DateTime @default(now())
+
+  @@index([materialId])
+  @@index([tipo])
+  @@index([createdAt])
+}
+
+// =====================================================================
+// SOLICITAÇÕES
+// =====================================================================
+
+model Solicitacao {
+  id String @id @default(cuid())
+
+  tipo TipoSolicitacao
+
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+
+  quantidade Decimal @db.Decimal(12, 3)
+  motivo     String?
+
+  status     StatusSolicitacao @default(PENDENTE)
+  prioridade Prioridade        @default(MEDIA)
+
+  dataDesejada DateTime?
+  dataLimite   DateTime?
+  dataPreparo  DateTime?
+  dataPronto   DateTime?
+  dataEntrega  DateTime?
+
+  observacoesInternas String?
+  anexos              Json?
+
+  solicitanteId String
+  solicitante   User   @relation("SolicitacaoCriadaPor", fields: [solicitanteId], references: [id])
+
+  aprovadorId          String?
+  aprovador            User?     @relation("SolicitacaoAprovadaPor", fields: [aprovadorId], references: [id])
+  observacaoAprovacao  String?
+  dataAprovacao        DateTime?
+
+  preparadorId      String?
+  preparador        User?     @relation("SolicitacaoPreparadaPor", fields: [preparadorId], references: [id])
+  observacaoPreparo String?
+  dataInicioPreparo DateTime?
+  dataFimPreparo    DateTime?
+
+  // Relação 1:1 com Agendamento - CORRIGIDO
+  agendamentoId String?      @unique
+  agendamento   Agendamento?
+
+  movimentacao MovimentacaoEstoque?
+  emprestimo   Emprestimo?
+
+  historicoStatus Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([materialId])
+  @@index([tipo])
+  @@index([prioridade])
+  @@index([solicitanteId])
+  @@index([dataDesejada])
+}
+
+// =====================================================================
+// AGENDAMENTOS
+// =====================================================================
+
+model Agendamento {
+  id String @id @default(cuid())
+
+  // Relação 1:1 com Solicitacao - AQUI É ONDE FICA O @relation
+  solicitacaoId String      @unique
+  solicitacao   Solicitacao @relation(fields: [solicitacaoId], references: [id])
+
+  tipoAgendamento TipoAgendamento @default(RETIRADA)
+
+  dataAgendada   DateTime
+  dataConfirmada DateTime?
+  dataCancelada  DateTime?
+
+  horarioInicio String?
+  horarioFim    String?
+
+  localEntrega String?
+  observacoes  String?
+
+  status AgendamentoStatus @default(AGENDADO)
+
+  usuarioId String
+  usuario   User   @relation("AgendamentoUsuario", fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dataAgendada])
+  @@index([status])
+}
+
+// =====================================================================
+// EMPRÉSTIMOS
+// =====================================================================
+
+model Emprestimo {
+  id String @id @default(cuid())
+
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+
+  quantidade Decimal @db.Decimal(12, 3)
+
+  solicitanteNome  String
+  solicitanteSetor String?
+
+  dataRetirada          DateTime  @default(now())
+  dataPrevistaDevolucao DateTime
+  dataDevolucao         DateTime?
+
+  status      StatusEmprestimo @default(EMPRESTADO)
+  observacoes String?
+
+  responsavelId String
+  responsavel   User   @relation("EmprestimoResponsavel", fields: [responsavelId], references: [id])
+
+  solicitacaoId String?      @unique
+  solicitacao   Solicitacao? @relation(fields: [solicitacaoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([materialId])
+  @@index([dataPrevistaDevolucao])
+}
+
+// =====================================================================
+// PEDIDOS DE COMPRA
+// =====================================================================
+
+model PedidoCompra {
+  id     String @id @default(cuid())
+  numero Int    @unique @default(autoincrement())
+
+  areaId String
+  area   Categoria @relation("PedidoCompraArea", fields: [areaId], references: [id])
+
+  solicitanteId String
+  solicitante   User   @relation("PedidoCompraCriadoPor", fields: [solicitanteId], references: [id])
+
+  status      StatusPedidoCompra @default(ABERTO)
+  observacoes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  itens ItemPedidoCompra[]
+
+  @@index([status])
+  @@index([areaId])
+}
+
+model ItemPedidoCompra {
+  id String @id @default(cuid())
+
+  pedidoId String
+  pedido   PedidoCompra @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  tipo TipoItemCompra
+
+  materialId String?
+  material   Material? @relation(fields: [materialId], references: [id])
+
+  nomeMaterialNovo String?
+  descricaoNovo    String?
+  unidadeSugerida  String?
+
+  quantidade         Decimal @db.Decimal(12, 3)
+  quantidadeRecebida Decimal @default(0) @db.Decimal(12, 3)
+
+  status     StatusItemCompra @default(PENDENTE)
+  observacao String?
+
+  dataRecebimento DateTime?
+  recebidoPorId   String?
+  recebidoPor     User?     @relation("ItemPedidoCompraRecebidoPor", fields: [recebidoPorId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([materialId])
+}
+
+// =====================================================================
+// NOTIFICAÇÕES
+// =====================================================================
+
+model Notificacao {
+  id String @id @default(cuid())
+
+  usuarioId String
+  usuario   User @relation("NotificacaoUsuario", fields: [usuarioId], references: [id])
+
+  titulo   String
+  mensagem String
+  tipo     NotificacaoTipo
+  lida     Boolean @default(false)
+
+  entidade   String
+  entidadeId String
+
+  dados Json?
+
+  createdAt DateTime  @default(now())
+  lidaEm    DateTime?
+
+  @@index([usuarioId])
+  @@index([lida])
+  @@index([createdAt])
+}
+
+// =====================================================================
+// HISTÓRICO DE STATUS
+// =====================================================================
+
+model StatusHistory {
+  id String @id @default(cuid())
+
+  entidade   String
+  entidadeId String
+
+  statusAnterior String?
+  statusNovo     String
+  observacao     String?
+
+  usuarioId String
+  usuario   User   @relation(fields: [usuarioId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@index([createdAt])
+}
+
+// =====================================================================
+// AUDITORIA
+// =====================================================================
+
+model LogAuditoria {
+  id String @id @default(cuid())
+
+  usuarioId String?
+  usuario   User?   @relation(fields: [usuarioId], references: [id])
+
+  acao       String
+  entidade   String
+  entidadeId String?
+
+  dadosAnteriores Json?
+  dadosNovos      Json?
+
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@index([usuarioId])
+  @@index([createdAt])
+}

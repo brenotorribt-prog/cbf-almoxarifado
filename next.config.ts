@@ -1,7 +1,28 @@
-import type { NextConfig } from "next";
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  compiler: {
+    styledComponents: true,
+  },
 
-const nextConfig: NextConfig = {
-  /* config options here */
-};
+  serverExternalPackages: ['@react-pdf/renderer'],
 
-export default nextConfig;
+  // ✅ Adiciona suporte para imagens do R2
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.r2.dev',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.r2.cloudflarestorage.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'pub-*.r2.dev',
+      },
+    ],
+  },
+}
+
+module.exports = nextConfig
