@@ -100,6 +100,23 @@ const roleOptions: RoleOption[] = [
   }
 ]
 
+// Máscara (00) 0 0000-0000 — formata progressivamente enquanto o usuário
+// digita, sem depender de lib externa. Baseado só na contagem de dígitos
+// já digitados, então funciona tanto pra formatar do zero quanto pra
+// reformatar um valor colado de uma vez.
+function formatarTelefone(valorBruto: string): string {
+  const digitos = valorBruto.replace(/\D/g, "").slice(0, 11)
+
+  let resultado = ""
+  if (digitos.length > 0) resultado += `(${digitos.slice(0, 2)}`
+  if (digitos.length >= 2) resultado += ") "
+  if (digitos.length > 2) resultado += digitos.slice(2, 3)
+  if (digitos.length > 3) resultado += ` ${digitos.slice(3, 7)}`
+  if (digitos.length > 7) resultado += `-${digitos.slice(7, 11)}`
+
+  return resultado
+}
+
 function CadastroComponent() {
   const router = useRouter()
 
@@ -146,7 +163,15 @@ function CadastroComponent() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target
-    setFormData(prev => ({ ...prev, [id]: value }))
+    
+    // Aplica máscara apenas no campo de telefone
+    if (id === "telefone") {
+      const apenasDigitos = value.replace(/\D/g, "")
+      const telefoneFormatado = formatarTelefone(apenasDigitos)
+      setFormData(prev => ({ ...prev, [id]: telefoneFormatado }))
+    } else {
+      setFormData(prev => ({ ...prev, [id]: value }))
+    }
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -172,6 +197,9 @@ function CadastroComponent() {
     setLoading(true)
 
     try {
+      // Remove formatação do telefone antes de enviar
+      const telefoneLimpo = formData.telefone.replace(/\D/g, "")
+
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -182,7 +210,7 @@ function CadastroComponent() {
           senha: formData.senha,
           setor: formData.setor,
           cargo: formData.cargo,
-          telefone: formData.telefone,
+          telefone: telefoneLimpo,
           role: selectedRole,
         }),
       })
@@ -364,9 +392,10 @@ function CadastroComponent() {
               <FieldInput
                 id="telefone"
                 type="text"
-                placeholder="(11) 99999-9999"
+                placeholder="(00) 0 0000-0000"
                 value={formData.telefone}
                 onChange={handleChange}
+                maxLength={16}
               />
             </Field>
 

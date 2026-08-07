@@ -42,6 +42,9 @@ import {
   Hash,
 } from "lucide-react"
 
+import NovaMovimentacaoModal from "@/components/movimentacoes/modals/nova-movimentacao"
+import NovoEmprestimoModal from "@/components/movimentacoes/modals/novo-emprestimo"
+
 // =====================================================================
 // TIPOS
 // =====================================================================
@@ -757,6 +760,27 @@ export default function MovimentacoesPage() {
           }}
         />
       )}
+
+      {mostrarNovaMovimentacao && (
+        <NovaMovimentacaoModal
+          onClose={() => setMostrarNovaMovimentacao(false)}
+          onSalvo={() => {
+            setMostrarNovaMovimentacao(false)
+            queryClient.invalidateQueries({ queryKey: ["movimentacoes"] })
+          }}
+        />
+      )}
+
+      {mostrarNovoEmprestimo && (
+        <NovoEmprestimoModal
+          onClose={() => setMostrarNovoEmprestimo(false)}
+          onSalvo={() => {
+            setMostrarNovoEmprestimo(false)
+            queryClient.invalidateQueries({ queryKey: ["emprestimos"] })
+            queryClient.invalidateQueries({ queryKey: ["movimentacoes"] })
+          }}
+        />
+      )}
     </PageWrapper>
   )
 }
@@ -1005,12 +1029,12 @@ const PrimaryButton = styled.button`
 `
 
 const SecondaryButton = styled(PrimaryButton)`
-  background: transparent;
-  color: ${({ theme }) => theme.colors.text.primary};
-  border: 1px solid ${({ theme }) => theme.colors.surface.border};
+  background: ${({ theme }) => theme.colors.accent.green};
+  color: ${({ theme }) => theme.colors.neutral.white};
+  border: none;
 
   &:hover {
-    background: ${({ theme }) => theme.colors.surface.glass};
+    background: ${({ theme }) => theme.colors.accent.greenDark};
   }
 `
 
