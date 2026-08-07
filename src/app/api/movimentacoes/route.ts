@@ -67,6 +67,10 @@ const movimentacaoSchema = z.object({
   quantidade: z.coerce.number(),
   motivo: z.string().trim().min(1, "Motivo é obrigatório").max(300),
   documentoReferencia: z.string().trim().max(100).optional().nullable(),
+  // NOVO: campos para registrar quem solicitou a movimentação
+  solicitanteNome: z.string().trim().max(150).optional().nullable(),
+  solicitanteSetor: z.string().trim().max(100).optional().nullable(),
+  solicitanteFuncao: z.string().trim().max(100).optional().nullable(),
 })
 
 export async function POST(request: NextRequest) {
@@ -136,6 +140,9 @@ export async function POST(request: NextRequest) {
         quantidadeAtual: estoqueNovo,
         motivo: dados.motivo,
         documentoReferencia: dados.documentoReferencia || null,
+        solicitanteNome: dados.solicitanteNome || null,
+        solicitanteSetor: dados.solicitanteSetor || null,
+        solicitanteFuncao: dados.solicitanteFuncao || null,
         usuarioId,
       },
     }),

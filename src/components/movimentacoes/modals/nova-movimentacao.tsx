@@ -29,6 +29,9 @@ import {
   SlidersHorizontal,
   PackageSearch,
   Info,
+  User,
+  Building2,
+  Briefcase,
 } from "lucide-react"
 
 // =====================================================================
@@ -180,6 +183,12 @@ const Secao = styled.div`
   gap: ${({ theme }) => theme.spacing[3]};
 `
 
+const SecaoTitulo = styled.h3`
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+  color: ${({ theme }) => theme.colors.text.primary};
+`
+
 const FieldGroup = styled.div`
   display: flex;
   flex-direction: column;
@@ -187,9 +196,16 @@ const FieldGroup = styled.div`
 `
 
 const Label = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: ${({ theme }) => theme.typography.fontSize.xs};
   font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
   color: ${({ theme }) => theme.colors.text.secondary};
+
+  svg {
+    opacity: 0.6;
+  }
 `
 
 const Obrigatorio = styled.span`
@@ -450,6 +466,14 @@ const AvisoInfo = styled.div`
   }
 `
 
+// -------- grid para campos lado a lado --------
+
+const Grid2 = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: ${({ theme }) => theme.spacing[3]};
+`
+
 // -------- rodapé --------
 
 const ModalActions = styled.div`
@@ -515,6 +539,9 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
   const [quantidade, setQuantidade] = useState("")
   const [motivo, setMotivo] = useState("")
   const [documentoReferencia, setDocumentoReferencia] = useState("")
+  const [solicitanteNome, setSolicitanteNome] = useState("")
+  const [solicitanteSetor, setSolicitanteSetor] = useState("")
+  const [solicitanteFuncao, setSolicitanteFuncao] = useState("")
 
   const [salvando, setSalvando] = useState(false)
   const [erroGeral, setErroGeral] = useState<string | null>(null)
@@ -635,6 +662,9 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
           quantidade: quantidadeNumerica,
           motivo: motivo.trim(),
           documentoReferencia: documentoReferencia.trim() || null,
+          solicitanteNome: solicitanteNome.trim() || null,
+          solicitanteSetor: solicitanteSetor.trim() || null,
+          solicitanteFuncao: solicitanteFuncao.trim() || null,
         }),
       })
       const dados = await res.json()
@@ -831,6 +861,61 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
               disabled={bloqueado}
             />
           </FieldGroup>
+        </Secao>
+
+        {/* ---------------- Pessoa relacionada (opcional) ---------------- */}
+        <Secao>
+          <SecaoTitulo>Pessoa relacionada</SecaoTitulo>
+          <TipoDescricao style={{ marginTop: -4 }}>
+            {tipo === "ENTRADA"
+              ? "Preencha se for uma devolução avulsa de alguém — deixe em branco se for reposição de compra."
+              : tipo === "SAIDA"
+              ? "Quem está consumindo o material diretamente, se souber."
+              : "Normalmente não se aplica a ajustes de inventário."}
+          </TipoDescricao>
+
+          <FieldGroup>
+            <Label htmlFor="solicitanteNome">
+              <User size={12} /> Nome
+            </Label>
+            <Input
+              id="solicitanteNome"
+              placeholder="Nome completo"
+              value={solicitanteNome}
+              onChange={(e) => setSolicitanteNome(e.target.value)}
+              maxLength={150}
+              disabled={bloqueado}
+            />
+          </FieldGroup>
+
+          <Grid2>
+            <FieldGroup>
+              <Label htmlFor="solicitanteSetor">
+                <Building2 size={12} /> Setor
+              </Label>
+              <Input
+                id="solicitanteSetor"
+                placeholder="Ex: Manutenção"
+                value={solicitanteSetor}
+                onChange={(e) => setSolicitanteSetor(e.target.value)}
+                maxLength={100}
+                disabled={bloqueado}
+              />
+            </FieldGroup>
+            <FieldGroup>
+              <Label htmlFor="solicitanteFuncao">
+                <Briefcase size={12} /> Função
+              </Label>
+              <Input
+                id="solicitanteFuncao"
+                placeholder="Ex: Eletricista"
+                value={solicitanteFuncao}
+                onChange={(e) => setSolicitanteFuncao(e.target.value)}
+                maxLength={100}
+                disabled={bloqueado}
+              />
+            </FieldGroup>
+          </Grid2>
         </Secao>
 
         {tipo === "AJUSTE" && (

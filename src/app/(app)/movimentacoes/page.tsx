@@ -66,6 +66,8 @@ interface MovimentacaoRow {
   quantidadeAtual: number
   motivo: string | null
   documentoReferencia: string | null
+  solicitanteNome: string | null
+  solicitanteSetor: string | null
   createdAt: string
   material: { id: string; nome: string; codigoInterno: string }
   usuario: { id: string; name: string }
@@ -500,7 +502,15 @@ export default function MovimentacoesPage() {
                           {mov.quantidade}
                         </QuantidadeTexto>
 
-                        <MotivoTexto title={mov.motivo ?? undefined}>{mov.motivo || "—"}</MotivoTexto>
+                        <MotivoWrapper>
+                          <MotivoTexto title={mov.motivo ?? undefined}>{mov.motivo || "—"}</MotivoTexto>
+                          {mov.solicitanteNome && (
+                            <RowMeta style={{ marginTop: 2 }}>
+                              {mov.solicitanteNome}
+                              {mov.solicitanteSetor ? ` · ${mov.solicitanteSetor}` : ""}
+                            </RowMeta>
+                          )}
+                        </MotivoWrapper>
 
                         <RowInfo>
                           <RowNome style={{ fontSize: theme.typography.fontSize.xs }}>{mov.usuario.name}</RowNome>
@@ -1272,6 +1282,12 @@ const QuantidadeTexto = styled.span<{ $tipo: TipoMovimentacao }>`
       : $tipo === "SAIDA" || $tipo === "DESCARTE"
       ? theme.colors.status.error
       : theme.colors.text.secondary};
+`
+
+const MotivoWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 `
 
 const MotivoTexto = styled.span`

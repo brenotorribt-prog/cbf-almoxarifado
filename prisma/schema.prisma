@@ -327,6 +327,14 @@ model MovimentacaoEstoque {
   motivo              String?
   documentoReferencia String?
 
+  // NOVO: pra reporting — quem tá relacionado a essa movimentação, quando
+  // fizer sentido (devolução avulsa, saída de consumo direto). Opcional
+  // porque ENTRADA de compra e AJUSTE de inventário normalmente não têm
+  // uma pessoa associada.
+  solicitanteNome   String?
+  solicitanteSetor  String?
+  solicitanteFuncao String?
+
   usuarioId String
   usuario   User   @relation("MovimentacaoUsuario", fields: [usuarioId], references: [id])
 
