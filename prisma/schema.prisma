@@ -95,7 +95,10 @@ enum TipoItemCompra {
 }
 
 enum StatusItemCompra {
-  PENDENTE
+  EM_ESPERA
+  ORCANDO
+  APROVADO
+  AGUARDANDO_ENTREGA
   RECEBIDO
   CANCELADO
 }
@@ -327,10 +330,6 @@ model MovimentacaoEstoque {
   motivo              String?
   documentoReferencia String?
 
-  // NOVO: pra reporting — quem tá relacionado a essa movimentação, quando
-  // fizer sentido (devolução avulsa, saída de consumo direto). Opcional
-  // porque ENTRADA de compra e AJUSTE de inventário normalmente não têm
-  // uma pessoa associada.
   solicitanteNome   String?
   solicitanteSetor  String?
   solicitanteFuncao String?
@@ -347,6 +346,10 @@ model MovimentacaoEstoque {
   movimentacaoOrigemId String?
   movimentacaoOrigem   MovimentacaoEstoque?  @relation("Devolucao", fields: [movimentacaoOrigemId], references: [id])
   devolucoes           MovimentacaoEstoque[] @relation("Devolucao")
+
+  // NOVO: referência para o item do pedido de compra
+  itemPedidoCompraId String?           @unique
+  itemPedidoCompra   ItemPedidoCompra? @relation(fields: [itemPedidoCompraId], references: [id])
 
   createdAt DateTime @default(now())
 
@@ -507,11 +510,15 @@ model PedidoCompra {
   id     String @id @default(cuid())
   numero Int    @unique @default(autoincrement())
 
-  areaId String
-  area   Categoria @relation("PedidoCompraArea", fields: [areaId], references: [id])
+  areaId String?
+  area   Categoria? @relation("PedidoCompraArea", fields: [areaId], references: [id])
 
   solicitanteId String
   solicitante   User   @relation("PedidoCompraCriadoPor", fields: [solicitanteId], references: [id])
+
+  solicitanteNome    String
+  solicitanteSetor   String
+  solicitanteFuncao  String
 
   status      StatusPedidoCompra @default(ABERTO)
   observacoes String?
@@ -523,6 +530,7 @@ model PedidoCompra {
 
   @@index([status])
   @@index([areaId])
+  @@index([solicitanteSetor])
 }
 
 model ItemPedidoCompra {
@@ -543,12 +551,15 @@ model ItemPedidoCompra {
   quantidade         Decimal @db.Decimal(12, 3)
   quantidadeRecebida Decimal @default(0) @db.Decimal(12, 3)
 
-  status     StatusItemCompra @default(PENDENTE)
-  observacao String?
+  status              StatusItemCompra @default(EM_ESPERA)
+  observacao          String?
+  dataPrevistaEntrega DateTime?
 
   dataRecebimento DateTime?
   recebidoPorId   String?
   recebidoPor     User?     @relation("ItemPedidoCompraRecebidoPor", fields: [recebidoPorId], references: [id])
+
+  movimentacao MovimentacaoEstoque?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
