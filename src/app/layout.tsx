@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next"
-import { Inter, JetBrains_Mono } from "next/font/google"
+import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google"
 
 import StyledComponentsRegistry from "@/lib/registry"
 import AppThemeProvider from "@/providers/ThemeProvider"
@@ -17,9 +17,15 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 })
 
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-space",
+  display: "swap",
+})
+
 export const metadata: Metadata = {
   title: "CBF Almoxarifado",
-  description: "Sistema interno de controle de estoque - CBF",
+  description: "Sistema interno de controle de estoque, empréstimos e movimentações - CBF",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -38,10 +44,8 @@ export const metadata: Metadata = {
   },
 }
 
-// Viewport fica separado do metadata — no Next 14+/15+/16, colocar
-// themeColor dentro de `metadata` gera warning de build e é ignorado.
 export const viewport: Viewport = {
-  themeColor: "#0a67c1",
+  themeColor: "#050a12",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -54,10 +58,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="pt-BR">
-      <body
-        className={`${inter.variable} ${jetbrainsMono.variable}`}
-      >
+    <html lang="pt-BR" data-scroll-behavior="smooth">
+      <body className={`${inter.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable}`}>
         <QueryProvider>
           <StyledComponentsRegistry>
             <AppThemeProvider>
