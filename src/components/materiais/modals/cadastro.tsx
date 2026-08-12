@@ -541,6 +541,7 @@ export default function CadastroMaterialModal({ onClose, onCadastrado }: Cadastr
   const [fabricante, setFabricante] = useState("")
   const [modelo, setModelo] = useState("")
   const [numeroSerie, setNumeroSerie] = useState("")
+  const [fornecedor, setFornecedor] = useState("")
   const [localizacaoFisica, setLocalizacaoFisica] = useState("")
   const [codigoBarras, setCodigoBarras] = useState("")
   const [qrCode, setQrCode] = useState("")
@@ -725,6 +726,7 @@ export default function CadastroMaterialModal({ onClose, onCadastrado }: Cadastr
         fabricante: fabricante.trim() || null,
         modelo: modelo.trim() || null,
         numeroSerie: numeroSerie.trim() || null,
+        fornecedor: fornecedor.trim() || null,
         localizacaoFisica: localizacaoFisica.trim() || null,
         codigoBarras: codigoBarras.trim() || null,
         qrCode: qrCode.trim() || null,
@@ -973,6 +975,16 @@ export default function CadastroMaterialModal({ onClose, onCadastrado }: Cadastr
                 value={numeroSerie}
                 onChange={(e) => setNumeroSerie(e.target.value)}
                 maxLength={80}
+                disabled={bloqueado}
+              />
+            </FieldGroup>
+            <FieldGroup>
+              <Label htmlFor="fornecedor">Fornecedor</Label>
+              <Input
+                id="fornecedor"
+                value={fornecedor}
+                onChange={(e) => setFornecedor(e.target.value)}
+                maxLength={100}
                 disabled={bloqueado}
               />
             </FieldGroup>

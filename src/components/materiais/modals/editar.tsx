@@ -52,6 +52,7 @@ export interface MaterialParaEditar {
   fabricante: string | null
   modelo: string | null
   numeroSerie: string | null
+  fornecedor: string | null
   estoqueMinimo: number
   estoqueIdeal: number
   estoqueMaximo: number
@@ -481,6 +482,7 @@ export default function EditarMaterialModal({ material, onClose, onSalvo }: Edit
   const [fabricante, setFabricante] = useState(material.fabricante ?? "")
   const [modelo, setModelo] = useState(material.modelo ?? "")
   const [numeroSerie, setNumeroSerie] = useState(material.numeroSerie ?? "")
+  const [fornecedor, setFornecedor] = useState(material.fornecedor ?? "")
   const [localizacaoFisica, setLocalizacaoFisica] = useState(material.localizacaoFisica ?? "")
   const [codigoBarras, setCodigoBarras] = useState(material.codigoBarras ?? "")
   const [qrCode, setQrCode] = useState(material.qrCode ?? "")
@@ -636,6 +638,7 @@ export default function EditarMaterialModal({ material, onClose, onSalvo }: Edit
         fabricante: fabricante.trim() || null,
         modelo: modelo.trim() || null,
         numeroSerie: numeroSerie.trim() || null,
+        fornecedor: fornecedor.trim() || null,
         localizacaoFisica: localizacaoFisica.trim() || null,
         codigoBarras: codigoBarras.trim() || null,
         qrCode: qrCode.trim() || null,
@@ -833,6 +836,16 @@ export default function EditarMaterialModal({ material, onClose, onSalvo }: Edit
             <FieldGroup>
               <Label htmlFor="numeroSerie">Número de série</Label>
               <Input id="numeroSerie" value={numeroSerie} onChange={(e) => setNumeroSerie(e.target.value)} maxLength={80} disabled={bloqueado} />
+            </FieldGroup>
+            <FieldGroup>
+              <Label htmlFor="fornecedor">Fornecedor</Label>
+              <Input
+                id="fornecedor"
+                value={fornecedor}
+                onChange={(e) => setFornecedor(e.target.value)}
+                maxLength={100}
+                disabled={bloqueado}
+              />
             </FieldGroup>
           </Grid2>
         </Secao>

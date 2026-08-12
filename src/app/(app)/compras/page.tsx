@@ -19,7 +19,6 @@ import {
   Plus,
   Search,
   Inbox,
-  Loader2,
   AlertTriangle,
   RefreshCw,
   ChevronDown,
@@ -28,15 +27,14 @@ import {
   Building2,
   Briefcase,
   CalendarClock,
-  Package,
   FileSpreadsheet,
   X,
   Check,
 } from "lucide-react"
+import CriarPedidoModal from "@/components/compras/modals/criar"
+import AdicionarItemModal from "@/components/compras/modals/adicionar-item"
 
 // TODO: componentes a construir em etapas separadas
-// import CriarPedidoModal from "@/components/compras/modals/criar"
-// import AdicionarItemModal from "@/components/compras/modals/adicionar-item"
 // import ExportarComprasButton from "@/components/compras/exportar"
 
 // =====================================================================
@@ -61,7 +59,7 @@ interface ItemPedido {
   quantidadeRecebida: number
   status: StatusItem
   observacao: string | null
-  dataPrevistaEntrega: string | null
+  prazoMaximoNecessario: string | null
   dataRecebimento: string | null
   createdAt: string
 }
@@ -970,9 +968,9 @@ export default function ComprasPage() {
 
                           <ItemDataPrevista>
                             <CalendarClock size={12} />
-                            {item.dataPrevistaEntrega
-                              ? `Previsto: ${formatarData(item.dataPrevistaEntrega)}`
-                              : "Sem previsão"}
+                            {item.prazoMaximoNecessario
+                              ? `Necessário até: ${formatarData(item.prazoMaximoNecessario)}`
+                              : "Sem prazo definido"}
                           </ItemDataPrevista>
 
                           <ItemObservacao title={item.observacao ?? undefined}>
@@ -996,21 +994,27 @@ export default function ComprasPage() {
         </ListaPedidos>
       )}
 
-      {/* TODO — próxima etapa:
       {mostrarCriarPedido && (
         <CriarPedidoModal
           onClose={() => setMostrarCriarPedido(false)}
-          onCriado={() => { setMostrarCriarPedido(false); carregarPedidos() }}
+          onCriado={() => {
+            setMostrarCriarPedido(false)
+            carregarPedidos()
+          }}
         />
       )}
+
       {pedidoParaAdicionarItem && (
         <AdicionarItemModal
           pedidoId={pedidoParaAdicionarItem}
+          numeroPedido={pedidos.find((p) => p.id === pedidoParaAdicionarItem)?.numero ?? 0}
           onClose={() => setPedidoParaAdicionarItem(null)}
-          onAdicionado={() => { setPedidoParaAdicionarItem(null); carregarPedidos() }}
+          onAdicionado={() => {
+            setPedidoParaAdicionarItem(null)
+            carregarPedidos()
+          }}
         />
       )}
-      */}
 
       {toast && (
         <Toast $tone={toast.tone}>

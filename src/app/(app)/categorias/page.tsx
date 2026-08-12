@@ -26,6 +26,7 @@ import {
   Ruler,
   Hash,
   Droplets,
+  UserRound,
 } from "lucide-react"
 
 // =====================================================================
@@ -33,7 +34,7 @@ import {
 // =====================================================================
 
 type TipoUnidade = "INTEIRA" | "FRACIONADA"
-type AbaAtiva = "categorias" | "unidades"
+type AbaAtiva = "categorias" | "unidades" | "pessoas"
 
 interface Categoria {
   id: string
@@ -51,6 +52,13 @@ interface UnidadeMedida {
   tipo: TipoUnidade
   createdAt: string
   totalMateriais: number
+}
+
+interface PessoaAtendida {
+  id: string
+  nome: string
+  setor: string
+  funcao: string
 }
 
 type FiltroAtivo = "todas" | "ativas" | "inativas"
@@ -128,16 +136,22 @@ const HeaderBadge = styled.div<{ $aba: AbaAtiva }>`
   justify-content: center;
   background: ${({ theme, $aba }) =>
     hexToRgba(
-      $aba === "unidades" ? theme.colors.status.info : theme.colors.accent.green,
+      $aba === "unidades" ? theme.colors.status.info : 
+      $aba === "pessoas" ? theme.colors.status.purple :
+      theme.colors.accent.green,
       0.16
     )};
   border: 1px solid ${({ theme, $aba }) =>
     hexToRgba(
-      $aba === "unidades" ? theme.colors.status.info : theme.colors.accent.green,
+      $aba === "unidades" ? theme.colors.status.info : 
+      $aba === "pessoas" ? theme.colors.status.purple :
+      theme.colors.accent.green,
       0.35
     )};
   color: ${({ theme, $aba }) =>
-    $aba === "unidades" ? theme.colors.status.info : theme.colors.accent.green};
+    $aba === "unidades" ? theme.colors.status.info : 
+    $aba === "pessoas" ? theme.colors.status.purple :
+    theme.colors.accent.green};
 `
 
 const Breadcrumb = styled.span`
@@ -174,7 +188,9 @@ const PrimaryButton = styled.button<{ $aba: AbaAtiva }>`
   padding: ${({ theme }) => `${theme.spacing[3]} ${theme.spacing[5]}`};
   border-radius: ${({ theme }) => theme.radii.md};
   background: ${({ theme, $aba }) =>
-    $aba === "unidades" ? theme.colors.status.info : theme.colors.accent.green};
+    $aba === "unidades" ? theme.colors.status.info : 
+    $aba === "pessoas" ? theme.colors.status.purple :
+    theme.colors.accent.green};
   color: ${({ theme }) => theme.colors.neutral.white};
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
   font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
@@ -185,6 +201,8 @@ const PrimaryButton = styled.button<{ $aba: AbaAtiva }>`
     background: ${({ theme, $aba }) =>
       $aba === "unidades"
         ? theme.colors.status.info
+        : $aba === "pessoas"
+        ? theme.colors.status.purple
         : theme.colors.accent.greenDark};
     filter: brightness(0.9);
   }
@@ -705,6 +723,7 @@ const AvisoExclusao = styled.div`
 
 type ModalCategoria = { modo: "criar" } | { modo: "editar"; categoria: Categoria }
 type ModalUnidade = { modo: "criar" } | { modo: "editar"; unidade: UnidadeMedida }
+type ModalPessoa = { modo: "criar" } | { modo: "editar"; pessoa: PessoaAtendida }
 
 export default function CategoriasPage() {
   const [abaAtiva, setAbaAtiva] = useState<AbaAtiva>("categorias")
@@ -721,6 +740,12 @@ export default function CategoriasPage() {
   const [carregandoUnidades, setCarregandoUnidades] = useState(true)
   const [buscaUnidades, setBuscaUnidades] = useState("")
   const [buscaUnidadesDebounced, setBuscaUnidadesDebounced] = useState("")
+
+  // Estado para pessoas
+  const [pessoas, setPessoas] = useState<PessoaAtendida[]>([])
+  const [carregandoPessoas, setCarregandoPessoas] = useState(true)
+  const [buscaPessoas, setBuscaPessoas] = useState("")
+  const [buscaPessoasDebounced, setBuscaPessoasDebounced] = useState("")
 
   // Modal categorias
   const [modalCategoria, setModalCategoria] = useState<ModalCategoria | null>(null)
@@ -742,6 +767,16 @@ export default function CategoriasPage() {
   const [modalExcluirUni, setModalExcluirUni] = useState<UnidadeMedida | null>(null)
   const [excluindoUni, setExcluindoUni] = useState(false)
 
+  // Modal pessoas
+  const [modalPessoa, setModalPessoa] = useState<ModalPessoa | null>(null)
+  const [formPessoaNome, setFormPessoaNome] = useState("")
+  const [formPessoaSetor, setFormPessoaSetor] = useState("")
+  const [formPessoaFuncao, setFormPessoaFuncao] = useState("")
+  const [formPessoaErro, setFormPessoaErro] = useState<string | null>(null)
+  const [salvandoPessoa, setSalvandoPessoa] = useState(false)
+  const [modalExcluirPessoa, setModalExcluirPessoa] = useState<PessoaAtendida | null>(null)
+  const [excluindoPessoa, setExcluindoPessoa] = useState(false)
+
   const [toast, setToast] = useState<{ tone: "success" | "error"; texto: string } | null>(null)
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -755,6 +790,11 @@ export default function CategoriasPage() {
     const t = setTimeout(() => setBuscaUnidadesDebounced(buscaUnidades.trim()), 350)
     return () => clearTimeout(t)
   }, [buscaUnidades])
+
+  useEffect(() => {
+    const t = setTimeout(() => setBuscaPessoasDebounced(buscaPessoas.trim()), 350)
+    return () => clearTimeout(t)
+  }, [buscaPessoas])
 
   // Toast
   const mostrarToast = useCallback((tone: "success" | "error", texto: string) => {
@@ -969,33 +1009,158 @@ export default function CategoriasPage() {
   }
 
   // =============================================================
+  // CRUD PESSOAS
+  // =============================================================
+
+  const carregarPessoas = useCallback(async () => {
+    setCarregandoPessoas(true)
+    try {
+      const params = new URLSearchParams()
+      if (buscaPessoasDebounced) params.set("busca", buscaPessoasDebounced)
+      const res = await fetch(`/api/pessoas-atendidas?${params.toString()}`)
+      if (!res.ok) throw new Error("Falha ao carregar pessoas")
+      const data = await res.json()
+      setPessoas(data.pessoas)
+    } catch {
+      mostrarToast("error", "Não foi possível carregar as pessoas atendidas.")
+    } finally {
+      setCarregandoPessoas(false)
+    }
+  }, [buscaPessoasDebounced, mostrarToast])
+
+  useEffect(() => {
+    carregarPessoas()
+  }, [carregarPessoas])
+
+  function abrirCriarPessoa() {
+    setFormPessoaNome("")
+    setFormPessoaSetor("")
+    setFormPessoaFuncao("")
+    setFormPessoaErro(null)
+    setModalPessoa({ modo: "criar" })
+  }
+
+  function abrirEditarPessoa(pessoa: PessoaAtendida) {
+    setFormPessoaNome(pessoa.nome)
+    setFormPessoaSetor(pessoa.setor)
+    setFormPessoaFuncao(pessoa.funcao)
+    setFormPessoaErro(null)
+    setModalPessoa({ modo: "editar", pessoa })
+  }
+
+  async function salvarPessoa() {
+    if (formPessoaNome.trim().length < 2 || formPessoaSetor.trim().length < 2 || formPessoaFuncao.trim().length < 2) {
+      setFormPessoaErro("Preencha nome, setor e função (mínimo 2 caracteres cada).")
+      return
+    }
+    setSalvandoPessoa(true)
+    setFormPessoaErro(null)
+    try {
+      const editando = modalPessoa?.modo === "editar"
+      const url = editando ? `/api/pessoas-atendidas/${modalPessoa.pessoa.id}` : "/api/pessoas-atendidas"
+      const res = await fetch(url, {
+        method: editando ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: formPessoaNome.trim(),
+          setor: formPessoaSetor.trim(),
+          funcao: formPessoaFuncao.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? "Erro ao salvar pessoa")
+      mostrarToast("success", editando ? "Pessoa atualizada." : "Pessoa cadastrada.")
+      setModalPessoa(null)
+      await carregarPessoas()
+    } catch (err) {
+      setFormPessoaErro(err instanceof Error ? err.message : "Erro ao salvar pessoa.")
+    } finally {
+      setSalvandoPessoa(false)
+    }
+  }
+
+  async function confirmarExclusaoPessoa() {
+    if (!modalExcluirPessoa) return
+    setExcluindoPessoa(true)
+    try {
+      const res = await fetch(`/api/pessoas-atendidas/${modalExcluirPessoa.id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error("Erro ao excluir pessoa")
+      mostrarToast("success", `"${modalExcluirPessoa.nome}" removido(a).`)
+      setModalExcluirPessoa(null)
+      await carregarPessoas()
+    } catch (err) {
+      mostrarToast("error", err instanceof Error ? err.message : "Erro ao excluir pessoa.")
+    } finally {
+      setExcluindoPessoa(false)
+    }
+  }
+
+  // =============================================================
   // RENDER
   // =============================================================
 
-  const carregando = abaAtiva === "categorias" ? carregandoCategorias : carregandoUnidades
-  const dados = abaAtiva === "categorias" ? categoriasFiltradas : unidades
-  const busca = abaAtiva === "categorias" ? buscaCategorias : buscaUnidades
-  const setBusca = abaAtiva === "categorias" ? setBuscaCategorias : setBuscaUnidades
+  const carregando = abaAtiva === "categorias" 
+    ? carregandoCategorias 
+    : abaAtiva === "unidades" 
+    ? carregandoUnidades 
+    : carregandoPessoas
+
+  const dados = abaAtiva === "categorias" 
+    ? categoriasFiltradas 
+    : abaAtiva === "unidades" 
+    ? unidades 
+    : pessoas
+
+  const busca = abaAtiva === "categorias" 
+    ? buscaCategorias 
+    : abaAtiva === "unidades" 
+    ? buscaUnidades 
+    : buscaPessoas
+
+  const setBusca = abaAtiva === "categorias" 
+    ? setBuscaCategorias 
+    : abaAtiva === "unidades" 
+    ? setBuscaUnidades 
+    : setBuscaPessoas
 
   return (
     <PageWrapper>
       <HeaderRow>
         <HeaderLeft>
           <HeaderBadge $aba={abaAtiva}>
-            {abaAtiva === "categorias" ? <Tags size={24} /> : <Ruler size={24} />}
+            {abaAtiva === "categorias" ? <Tags size={24} /> : 
+             abaAtiva === "unidades" ? <Ruler size={24} /> : 
+             <UserRound size={24} />}
           </HeaderBadge>
           <div>
             <Breadcrumb>Materiais</Breadcrumb>
-            <Title>Categorias &amp; Unidades</Title>
+            <Title>
+              {abaAtiva === "categorias" ? "Categorias" : 
+               abaAtiva === "unidades" ? "Unidades" : 
+               "Pessoas atendidas"}
+            </Title>
             <Subtitle>
-              Gerencie as classificações e unidades de medida usadas nos materiais do almoxarifado.
+              {abaAtiva === "categorias" 
+                ? "Gerencie as classificações usadas nos materiais do almoxarifado."
+                : abaAtiva === "unidades"
+                ? "Gerencie as unidades de medida usadas nos materiais do almoxarifado."
+                : "Cadastro leve de pessoas atendidas para autocomplete nos pedidos de compra."}
             </Subtitle>
           </div>
         </HeaderLeft>
 
-        <PrimaryButton $aba={abaAtiva} onClick={abaAtiva === "categorias" ? abrirCriarCategoria : abrirCriarUnidade}>
+        <PrimaryButton 
+          $aba={abaAtiva} 
+          onClick={
+            abaAtiva === "categorias" ? abrirCriarCategoria :
+            abaAtiva === "unidades" ? abrirCriarUnidade :
+            abrirCriarPessoa
+          }
+        >
           <Plus size={16} />
-          {abaAtiva === "categorias" ? "Nova categoria" : "Nova unidade"}
+          {abaAtiva === "categorias" ? "Nova categoria" : 
+           abaAtiva === "unidades" ? "Nova unidade" : 
+           "Nova pessoa"}
         </PrimaryButton>
       </HeaderRow>
 
@@ -1008,13 +1173,21 @@ export default function CategoriasPage() {
           <Ruler size={14} style={{ display: "inline", marginRight: 6, verticalAlign: -1 }} />
           Unidades
         </AbaButton>
+        <AbaButton $active={abaAtiva === "pessoas"} onClick={() => setAbaAtiva("pessoas")}>
+          <UserRound size={14} style={{ display: "inline", marginRight: 6, verticalAlign: -1 }} />
+          Pessoas
+        </AbaButton>
       </AbasContainer>
 
       <Toolbar>
         <SearchBox>
           <Search size={16} />
           <input
-            placeholder={abaAtiva === "categorias" ? "Buscar categoria..." : "Buscar por nome ou sigla..."}
+            placeholder={
+              abaAtiva === "categorias" ? "Buscar categoria..." : 
+              abaAtiva === "unidades" ? "Buscar por nome ou sigla..." : 
+              "Buscar pessoa, setor ou função..."
+            }
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
           />
@@ -1045,10 +1218,12 @@ export default function CategoriasPage() {
             <Inbox size={32} />
             <span>
               {busca
-                ? `Nenhum(a) ${abaAtiva === "categorias" ? "categoria" : "unidade"} encontrado(a) pra essa busca.`
+                ? `Nenhum(a) ${abaAtiva === "categorias" ? "categoria" : abaAtiva === "unidades" ? "unidade" : "pessoa"} encontrado(a) pra essa busca.`
                 : abaAtiva === "categorias"
                 ? "Nenhuma categoria cadastrada ainda. Crie a primeira pra liberar a classificação de materiais."
-                : "Nenhuma unidade cadastrada ainda. Crie a primeira pra liberar o cadastro de materiais."}
+                : abaAtiva === "unidades"
+                ? "Nenhuma unidade cadastrada ainda. Crie a primeira pra liberar o cadastro de materiais."
+                : "Nenhuma pessoa cadastrada ainda. Crie a primeira pra usar nos pedidos de compra."}
             </span>
           </EmptyState>
         )}
@@ -1136,6 +1311,37 @@ export default function CategoriasPage() {
                 </CardActions>
               </CardFooter>
             </UnidadeCard>
+          ))}
+
+        {!carregando &&
+          abaAtiva === "pessoas" &&
+          pessoas.map((pessoa, index) => (
+            <CategoriaCard key={pessoa.id} $index={index} $inativa={false}>
+              <CardTop>
+                <Swatch $color={theme.colors.status.purple}>
+                  <UserRound size={18} />
+                </Swatch>
+              </CardTop>
+              <div>
+                <CategoriaNome>{pessoa.nome}</CategoriaNome>
+                <CategoriaDescricao>{pessoa.setor} — {pessoa.funcao}</CategoriaDescricao>
+              </div>
+              <CardFooter>
+                <span />
+                <CardActions>
+                  <GhostIconButton onClick={() => abrirEditarPessoa(pessoa)} title="Editar">
+                    <Pencil size={14} />
+                  </GhostIconButton>
+                  <GhostIconButton
+                    className="danger"
+                    onClick={() => setModalExcluirPessoa(pessoa)}
+                    title="Excluir"
+                  >
+                    <Trash2 size={14} />
+                  </GhostIconButton>
+                </CardActions>
+              </CardFooter>
+            </CategoriaCard>
           ))}
       </Grid>
 
@@ -1330,6 +1536,92 @@ export default function CategoriasPage() {
               >
                 {excluindoUni ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
                 Excluir
+              </ActionButton>
+            </ModalActions>
+          </ModalCard>
+        </ModalOverlay>
+      )}
+
+      {/* ============================================================= */}
+      {/* MODAL PESSOA */}
+      {/* ============================================================= */}
+
+      {modalPessoa && (
+        <ModalOverlay onClick={() => !salvandoPessoa && setModalPessoa(null)}>
+          <ModalCard onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>
+              {modalPessoa.modo === "criar" ? "Nova pessoa" : "Editar pessoa"}
+            </ModalTitle>
+
+            <FieldGroup>
+              <Label htmlFor="nome-pessoa">Nome</Label>
+              <Input
+                id="nome-pessoa"
+                autoFocus
+                placeholder="Ex: João Silva"
+                value={formPessoaNome}
+                onChange={(e) => setFormPessoaNome(e.target.value)}
+                maxLength={80}
+              />
+            </FieldGroup>
+
+            <FieldGroup>
+              <Label htmlFor="setor-pessoa">Setor</Label>
+              <Input
+                id="setor-pessoa"
+                placeholder="Ex: Manutenção, Produção, Logística..."
+                value={formPessoaSetor}
+                onChange={(e) => setFormPessoaSetor(e.target.value)}
+                maxLength={80}
+              />
+            </FieldGroup>
+
+            <FieldGroup>
+              <Label htmlFor="funcao-pessoa">Função</Label>
+              <Input
+                id="funcao-pessoa"
+                placeholder="Ex: Técnico, Supervisor, Operador..."
+                value={formPessoaFuncao}
+                onChange={(e) => setFormPessoaFuncao(e.target.value)}
+                maxLength={80}
+              />
+            </FieldGroup>
+
+            {formPessoaErro && <ErrorText>{formPessoaErro}</ErrorText>}
+
+            <ModalActions>
+              <ActionButton $variant="ghost" disabled={salvandoPessoa} onClick={() => setModalPessoa(null)}>
+                Cancelar
+              </ActionButton>
+              <ActionButton $variant="primary" disabled={salvandoPessoa} onClick={salvarPessoa}>
+                {salvandoPessoa ? <Loader2 size={14} className="spin" /> : <Check size={14} />}
+                {modalPessoa.modo === "criar" ? "Criar pessoa" : "Salvar alterações"}
+              </ActionButton>
+            </ModalActions>
+          </ModalCard>
+        </ModalOverlay>
+      )}
+
+      {/* MODAL EXCLUIR PESSOA */}
+      {modalExcluirPessoa && (
+        <ModalOverlay onClick={() => !excluindoPessoa && setModalExcluirPessoa(null)}>
+          <ModalCard onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>Remover pessoa</ModalTitle>
+            <Subtitle style={{ marginTop: 0 }}>
+              Tem certeza que quer remover <strong>{modalExcluirPessoa.nome}</strong>?
+            </Subtitle>
+
+            <ModalActions>
+              <ActionButton $variant="ghost" disabled={excluindoPessoa} onClick={() => setModalExcluirPessoa(null)}>
+                Cancelar
+              </ActionButton>
+              <ActionButton
+                $variant="danger"
+                disabled={excluindoPessoa}
+                onClick={confirmarExclusaoPessoa}
+              >
+                {excluindoPessoa ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+                Remover
               </ActionButton>
             </ModalActions>
           </ModalCard>

@@ -30,7 +30,18 @@ export async function GET(request: NextRequest) {
     include: {
       solicitante: { select: { id: true, name: true } },
       itens: {
-        include: { material: { select: { id: true, nome: true } } },
+        include: { 
+          material: { 
+            select: { 
+              id: true, 
+              nome: true, 
+              marca: true, 
+              fabricante: true, 
+              modelo: true, 
+              fornecedor: true 
+            } 
+          } 
+        },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -52,9 +63,13 @@ const itemSchema = z
     nomeMaterialNovo: z.string().trim().max(150).optional().nullable(),
     descricaoNovo: z.string().trim().max(500).optional().nullable(),
     unidadeSugerida: z.string().trim().max(30).optional().nullable(),
+    marcaNovo: z.string().trim().max(80).optional().nullable(),
+    fabricanteNovo: z.string().trim().max(80).optional().nullable(),
+    modeloNovo: z.string().trim().max(80).optional().nullable(),
+    fornecedorNovo: z.string().trim().max(100).optional().nullable(),
     quantidade: z.coerce.number().positive("Quantidade deve ser maior que zero"),
     observacao: z.string().trim().max(300).optional().nullable(),
-    dataPrevistaEntrega: z.string().datetime().optional().nullable(),
+    prazoMaximoNecessario: z.string().datetime().optional().nullable(),
   })
   .superRefine((item, ctx) => {
     if (item.tipo === "MATERIAL_EXISTENTE" && !item.materialId) {
@@ -104,17 +119,56 @@ export async function POST(request: NextRequest) {
           nomeMaterialNovo: item.tipo === "MATERIAL_NOVO" ? item.nomeMaterialNovo : null,
           descricaoNovo: item.tipo === "MATERIAL_NOVO" ? item.descricaoNovo || null : null,
           unidadeSugerida: item.tipo === "MATERIAL_NOVO" ? item.unidadeSugerida || null : null,
+          marcaNovo: item.tipo === "MATERIAL_NOVO" ? item.marcaNovo || null : null,
+          fabricanteNovo: item.tipo === "MATERIAL_NOVO" ? item.fabricanteNovo || null : null,
+          modeloNovo: item.tipo === "MATERIAL_NOVO" ? item.modeloNovo || null : null,
+          fornecedorNovo: item.tipo === "MATERIAL_NOVO" ? item.fornecedorNovo || null : null,
           quantidade: item.quantidade,
           observacao: item.observacao || null,
-          dataPrevistaEntrega: item.dataPrevistaEntrega ? new Date(item.dataPrevistaEntrega) : null,
+          prazoMaximoNecessario: item.prazoMaximoNecessario ? new Date(item.prazoMaximoNecessario) : null,
         })),
       },
     },
     include: {
       solicitante: { select: { id: true, name: true } },
-      itens: { include: { material: { select: { id: true, nome: true } } } },
+      itens: { 
+        include: { 
+          material: { 
+            select: { 
+              id: true, 
+              nome: true, 
+              marca: true, 
+              fabricante: true, 
+              modelo: true, 
+              fornecedor: true 
+            } 
+          } 
+        } 
+      },
     },
   })
+
+  // Upsert automático de PessoaAtendida (best-effort, não deve falhar a criação do pedido)
+  try {
+    const pessoaExistente = await prisma.pessoaAtendida.findFirst({
+      where: {
+        nome: { equals: dados.solicitanteNome, mode: "insensitive" },
+        setor: { equals: dados.solicitanteSetor, mode: "insensitive" },
+        funcao: { equals: dados.solicitanteFuncao, mode: "insensitive" },
+      },
+    })
+    if (!pessoaExistente) {
+      await prisma.pessoaAtendida.create({
+        data: {
+          nome: dados.solicitanteNome,
+          setor: dados.solicitanteSetor,
+          funcao: dados.solicitanteFuncao,
+        },
+      })
+    }
+  } catch {
+    // best-effort — não deve falhar a criação do pedido
+  }
 
   return NextResponse.json({ pedido: mapearPedido(pedido) }, { status: 201 })
 }
@@ -123,7 +177,20 @@ export async function POST(request: NextRequest) {
 type PedidoComRelacoes = Prisma.PedidoCompraGetPayload<{
   include: {
     solicitante: { select: { id: true; name: true } }
-    itens: { include: { material: { select: { id: true; nome: true } } } }
+    itens: { 
+      include: { 
+        material: { 
+          select: { 
+            id: true
+            nome: true
+            marca: true
+            fabricante: true
+            modelo: true
+            fornecedor: true
+          } 
+        } 
+      } 
+    }
   }
 }>
 

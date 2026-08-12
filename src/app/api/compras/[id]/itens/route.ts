@@ -10,9 +10,13 @@ const itemSchema = z
     nomeMaterialNovo: z.string().trim().max(150).optional().nullable(),
     descricaoNovo: z.string().trim().max(500).optional().nullable(),
     unidadeSugerida: z.string().trim().max(30).optional().nullable(),
+    marcaNovo: z.string().trim().max(80).optional().nullable(),
+    fabricanteNovo: z.string().trim().max(80).optional().nullable(),
+    modeloNovo: z.string().trim().max(80).optional().nullable(),
+    fornecedorNovo: z.string().trim().max(100).optional().nullable(),
     quantidade: z.coerce.number().positive(),
     observacao: z.string().trim().max(300).optional().nullable(),
-    dataPrevistaEntrega: z.string().datetime().optional().nullable(),
+    prazoMaximoNecessario: z.string().datetime().optional().nullable(),
   })
   .superRefine((item, ctx) => {
     if (item.tipo === "MATERIAL_EXISTENTE" && !item.materialId) {
@@ -63,11 +67,15 @@ export async function POST(
       nomeMaterialNovo: dados.tipo === "MATERIAL_NOVO" ? dados.nomeMaterialNovo : null,
       descricaoNovo: dados.tipo === "MATERIAL_NOVO" ? dados.descricaoNovo || null : null,
       unidadeSugerida: dados.tipo === "MATERIAL_NOVO" ? dados.unidadeSugerida || null : null,
+      marcaNovo: dados.tipo === "MATERIAL_NOVO" ? dados.marcaNovo || null : null,
+      fabricanteNovo: dados.tipo === "MATERIAL_NOVO" ? dados.fabricanteNovo || null : null,
+      modeloNovo: dados.tipo === "MATERIAL_NOVO" ? dados.modeloNovo || null : null,
+      fornecedorNovo: dados.tipo === "MATERIAL_NOVO" ? dados.fornecedorNovo || null : null,
       quantidade: dados.quantidade,
       observacao: dados.observacao || null,
-      dataPrevistaEntrega: dados.dataPrevistaEntrega ? new Date(dados.dataPrevistaEntrega) : null,
+      prazoMaximoNecessario: dados.prazoMaximoNecessario ? new Date(dados.prazoMaximoNecessario) : null,
     },
-    include: { material: { select: { id: true, nome: true } } },
+    include: { material: { select: { id: true, nome: true, marca: true, fabricante: true, modelo: true, fornecedor: true } } },
   })
 
   // se o pedido estava CONCLUIDO isso já foi bloqueado acima; se estava

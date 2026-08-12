@@ -64,6 +64,7 @@ const editarMaterialSchema = z
     fabricante: z.string().trim().max(80).optional().nullable(),
     modelo: z.string().trim().max(80).optional().nullable(),
     numeroSerie: z.string().trim().max(80).optional().nullable(),
+    fornecedor: z.string().trim().max(100).optional().nullable(),
 
     estoqueMinimo: z.coerce.number().min(0).optional(),
     estoqueIdeal: z.coerce.number().min(0).optional(),

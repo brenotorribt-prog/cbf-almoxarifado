@@ -283,6 +283,7 @@ model Material {
   fabricante  String?
   modelo      String?
   numeroSerie String?
+  fornecedor  String?
 
   estoqueMinimo Decimal @default(0) @db.Decimal(12, 3)
   estoqueIdeal  Decimal @default(0) @db.Decimal(12, 3)
@@ -309,6 +310,22 @@ model Material {
   @@index([situacao])
   @@index([nome])
   @@index([codigoInterno])
+}
+
+// =====================================================================
+// PESSOA ATENDIDA - registro leve de pessoas atendidas pelo almoxarifado
+// =====================================================================
+
+model PessoaAtendida {
+  id      String @id @default(cuid())
+  nome    String
+  setor   String
+  funcao  String
+
+  createdAt DateTime @default(now())
+
+  @@index([nome])
+  @@index([setor])
 }
 
 // =====================================================================
@@ -347,7 +364,6 @@ model MovimentacaoEstoque {
   movimentacaoOrigem   MovimentacaoEstoque?  @relation("Devolucao", fields: [movimentacaoOrigemId], references: [id])
   devolucoes           MovimentacaoEstoque[] @relation("Devolucao")
 
-  // NOVO: referência para o item do pedido de compra
   itemPedidoCompraId String?           @unique
   itemPedidoCompra   ItemPedidoCompra? @relation(fields: [itemPedidoCompraId], references: [id])
 
@@ -548,12 +564,18 @@ model ItemPedidoCompra {
   descricaoNovo    String?
   unidadeSugerida  String?
 
+  marcaNovo      String?
+  fabricanteNovo String?
+  modeloNovo     String?
+  fornecedorNovo String?
+
   quantidade         Decimal @db.Decimal(12, 3)
   quantidadeRecebida Decimal @default(0) @db.Decimal(12, 3)
 
-  status              StatusItemCompra @default(EM_ESPERA)
-  observacao          String?
-  dataPrevistaEntrega DateTime?
+  status StatusItemCompra @default(EM_ESPERA)
+  observacao String?
+
+  prazoMaximoNecessario DateTime?
 
   dataRecebimento DateTime?
   recebidoPorId   String?

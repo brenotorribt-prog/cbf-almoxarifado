@@ -8,7 +8,7 @@ const atualizarItemSchema = z.object({
   // RECEBIDO não entra aqui de propósito — só a rota de Movimentações
   // (a construir) deve poder marcar como RECEBIDO, pra manter o vínculo
   // com o registro de entrada em estoque.
-  dataPrevistaEntrega: z.string().datetime().optional().nullable(),
+  prazoMaximoNecessario: z.string().datetime().optional().nullable(),
   observacao: z.string().trim().max(300).optional().nullable(),
   quantidade: z.coerce.number().positive().optional(),
 })
@@ -40,11 +40,11 @@ export async function PATCH(
     where: { id: itemId },
     data: {
       status: dados.status,
-      dataPrevistaEntrega:
-        dados.dataPrevistaEntrega === undefined
+      prazoMaximoNecessario:
+        dados.prazoMaximoNecessario === undefined
           ? undefined
-          : dados.dataPrevistaEntrega
-          ? new Date(dados.dataPrevistaEntrega)
+          : dados.prazoMaximoNecessario
+          ? new Date(dados.prazoMaximoNecessario)
           : null,
       observacao: dados.observacao === undefined ? undefined : dados.observacao || null,
       quantidade: dados.quantidade,

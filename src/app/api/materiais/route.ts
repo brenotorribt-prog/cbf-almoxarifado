@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
   const linhas = await prisma.$queryRaw<RowMaterial[]>(Prisma.sql`
     SELECT
       m.id, m."numeroSequencial", m."codigoInterno", m."codigoBarras", m."qrCode",
-      m.nome, m.descricao, m.marca, m.fabricante, m.modelo, m."numeroSerie",
+      m.nome, m.descricao, m.marca, m.fabricante, m.modelo, m."numeroSerie", m.fornecedor,
       m."estoqueMinimo", m."estoqueIdeal", m."estoqueMaximo", m."estoqueAtual",
       m."localizacaoFisica", m.situacao, m."fotoUrl", m."requerAprovacao",
       m."createdAt", m."updatedAt",
@@ -117,6 +117,7 @@ const criarMaterialSchema = z
     fabricante: z.string().trim().max(80).optional().nullable(),
     modelo: z.string().trim().max(80).optional().nullable(),
     numeroSerie: z.string().trim().max(80).optional().nullable(),
+    fornecedor: z.string().trim().max(100).optional().nullable(),
 
     estoqueMinimo: z.coerce.number().min(0).default(0),
     estoqueIdeal: z.coerce.number().min(0).default(0),
@@ -209,6 +210,7 @@ export async function POST(request: NextRequest) {
           fabricante: dados.fabricante || null,
           modelo: dados.modelo || null,
           numeroSerie: dados.numeroSerie || null,
+          fornecedor: dados.fornecedor || null,
           estoqueMinimo: dados.estoqueMinimo,
           estoqueIdeal: dados.estoqueIdeal,
           estoqueMaximo: dados.estoqueMaximo,
@@ -274,6 +276,7 @@ interface RowMaterial {
   fabricante: string | null
   modelo: string | null
   numeroSerie: string | null
+  fornecedor: string | null
   estoqueMinimo: string
   estoqueIdeal: string
   estoqueMaximo: string
@@ -313,6 +316,7 @@ function mapearMaterial(row: RowMaterial) {
     fabricante: row.fabricante,
     modelo: row.modelo,
     numeroSerie: row.numeroSerie,
+    fornecedor: row.fornecedor,
     estoqueMinimo: Number(row.estoqueMinimo),
     estoqueIdeal: Number(row.estoqueIdeal),
     estoqueMaximo: Number(row.estoqueMaximo),
