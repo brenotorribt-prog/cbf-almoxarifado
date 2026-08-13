@@ -89,6 +89,7 @@ interface Material {
   fabricante: string | null
   modelo: string | null
   numeroSerie: string | null
+  fornecedor: string | null
   estoqueMinimo: number
   estoqueIdeal: number
   estoqueMaximo: number
