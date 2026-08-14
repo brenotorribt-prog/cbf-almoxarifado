@@ -1,27 +1,15 @@
+// src/app/api/pdf/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-import { renderToStream } from '@react-pdf/renderer'
+import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/prisma'
+import fs from 'fs'
+import path from 'path'
 
 // Importações dos componentes PDF
 import { MovimentacaoPDF } from '@/components/pdf/MovimentacaoPDF'
 import { EmprestimoPDF } from '@/components/pdf/EmprestimoPDF'
 
-// Função para converter ReadableStream para Buffer
-async function streamToBuffer(stream: any): Promise<Buffer> {
-  const chunks: Uint8Array[] = []
-  const reader = stream.getReader()
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value) {
-      chunks.push(value)
-    }
-  }
-
-  return Buffer.concat(chunks as any[])
-}
-
+// Helper para obter a URL base da aplicação
 function getBaseUrl() {
   if (process.env.NEXT_PUBLIC_APP_URL) {
     return process.env.NEXT_PUBLIC_APP_URL
@@ -30,6 +18,28 @@ function getBaseUrl() {
     return `https://${process.env.VERCEL_URL}`
   }
   return 'http://localhost:3000'
+}
+
+// ✅ Função para converter imagem para Base64
+function getImageBase64(filePath: string): string | null {
+  try {
+    const fullPath = path.join(process.cwd(), 'public', filePath)
+    console.log(`🔍 Procurando imagem em: ${fullPath}`)
+    
+    if (!fs.existsSync(fullPath)) {
+      console.log(`⚠️ Imagem não encontrada: ${filePath}`)
+      return null
+    }
+    
+    const buffer = fs.readFileSync(fullPath)
+    const base64 = buffer.toString('base64')
+    const ext = path.extname(filePath).substring(1) // png, jpg, etc
+    console.log(`✅ Imagem carregada: ${filePath} (${buffer.length} bytes)`)
+    return `data:image/${ext};base64,${base64}`
+  } catch (error) {
+    console.error(`❌ Erro ao ler imagem ${filePath}:`, error)
+    return null
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -45,10 +55,13 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const baseUrl = getBaseUrl()
-    const logoUrl = `${baseUrl}/CBFLO.png`
-    const footerLogoUrl = `${baseUrl}/CBFTEXT.png`
+    // ✅ Carrega as imagens em Base64
+    const logoBase64 = getImageBase64('CBFLO.png')
+    const footerLogoBase64 = getImageBase64('CBFTEXT.png')
 
+    // ================================================================
+    // MOVIMENTAÇÃO
+    // ================================================================
     if (tipo === 'movimentacao') {
       const movimentacao = await prisma.movimentacaoEstoque.findUnique({
         where: { id },
@@ -69,6 +82,7 @@ export async function GET(req: NextRequest) {
         )
       }
 
+      // Cria o componente PDF
       const pdfComponent = MovimentacaoPDF({
         data: {
           id: movimentacao.id,
@@ -92,14 +106,14 @@ export async function GET(req: NextRequest) {
             name: movimentacao.usuario.name,
           },
         },
-        logoUrl: logoUrl,
-        footerLogoUrl: footerLogoUrl,
+        logoUrl: logoBase64 || undefined,
+        footerLogoUrl: footerLogoBase64 || undefined,
       })
 
-      const stream = await renderToStream(pdfComponent)
-      const pdfBuffer = await streamToBuffer(stream)
+      const pdfBuffer = await renderToBuffer(pdfComponent)
+      const pdfData = new Uint8Array(pdfBuffer)
 
-      return new NextResponse(new Uint8Array(pdfBuffer), {
+      return new NextResponse(pdfData, {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `attachment; filename=movimentacao-${movimentacao.id}.pdf`,
@@ -107,6 +121,9 @@ export async function GET(req: NextRequest) {
       })
     }
 
+    // ================================================================
+    // EMPRÉSTIMO
+    // ================================================================
     if (tipo === 'emprestimo') {
       const emprestimo = await prisma.emprestimo.findUnique({
         where: { id },
@@ -154,14 +171,14 @@ export async function GET(req: NextRequest) {
             name: emprestimo.aprovador.name,
           } : null,
         },
-        logoUrl: logoUrl,
-        footerLogoUrl: footerLogoUrl,
+        logoUrl: logoBase64 || undefined,
+        footerLogoUrl: footerLogoBase64 || undefined,
       })
 
-      const stream = await renderToStream(pdfComponent)
-      const pdfBuffer = await streamToBuffer(stream)
+      const pdfBuffer = await renderToBuffer(pdfComponent)
+      const pdfData = new Uint8Array(pdfBuffer)
 
-      return new NextResponse(new Uint8Array(pdfBuffer), {
+      return new NextResponse(pdfData, {
         headers: {
           'Content-Type': 'application/pdf',
           'Content-Disposition': `attachment; filename=emprestimo-${emprestimo.id}.pdf`,
@@ -175,7 +192,7 @@ export async function GET(req: NextRequest) {
     )
 
   } catch (error) {
-    console.error('Erro ao gerar PDF:', error)
+    console.error('❌ Erro ao gerar PDF:', error)
     return NextResponse.json(
       { error: 'Erro ao gerar o PDF' },
       { status: 500 }
