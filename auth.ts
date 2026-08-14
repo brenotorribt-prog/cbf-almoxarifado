@@ -17,7 +17,6 @@ const credentialsSchema = z.object({
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  debug: true,
   providers: [
     Credentials({
       credentials: {
