@@ -1254,7 +1254,7 @@ export default function CategoriasPage() {
               <CardFooter>
                 <ContagemMateriais>
                   <Package size={12} />
-                  {categoria.totalMateriais} material{categoria.totalMateriais !== 1 ? "is" : ""}
+                  {categoria.totalMateriais} {categoria.totalMateriais === 1 ? "material" : "materiais"}
                 </ContagemMateriais>
                 <CardActions>
                   <GhostIconButton onClick={() => abrirEditarCategoria(categoria)} title="Editar">
@@ -1295,7 +1295,7 @@ export default function CategoriasPage() {
               <CardFooter>
                 <ContagemMateriais>
                   <Package size={12} />
-                  {unidade.totalMateriais} material{unidade.totalMateriais !== 1 ? "is" : ""}
+                  {unidade.totalMateriais} {unidade.totalMateriais === 1 ? "material" : "materiais"}
                 </ContagemMateriais>
                 <CardActions>
                   <GhostIconButton onClick={() => abrirEditarUnidade(unidade)} title="Editar">

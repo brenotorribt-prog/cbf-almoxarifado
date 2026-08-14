@@ -33,6 +33,7 @@ import {
   Building2,
   Briefcase,
 } from "lucide-react"
+import { downloadPDF } from "@/lib/pdf-helper"
 
 // =====================================================================
 // TIPOS
@@ -51,7 +52,7 @@ interface MaterialBusca {
 
 interface NovaMovimentacaoModalProps {
   onClose: () => void
-  onSalvo: () => void
+  onSalvo: (movimentacaoId?: string) => void
 }
 
 // =====================================================================
@@ -670,7 +671,8 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
       const dados = await res.json()
       if (!res.ok) throw new Error(dados.error ?? "Erro ao registrar movimentação.")
 
-      onSalvo()
+      // Passa o ID da movimentação criada para o callback
+      onSalvo(dados.id)
     } catch (err) {
       setErroGeral(err instanceof Error ? err.message : "Erro ao registrar movimentação.")
     } finally {

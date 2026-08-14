@@ -1,6 +1,8 @@
+// src/auth.config.ts
 import type { NextAuthConfig } from "next-auth"
 
 export const authConfig = {
+  trustHost: true,
   pages: {
     signIn: "/login",
   },
@@ -8,7 +10,8 @@ export const authConfig = {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user
       const isAuthPage =
-        nextUrl.pathname.startsWith("/login") || nextUrl.pathname.startsWith("/register")
+        nextUrl.pathname.startsWith("/login") || 
+        nextUrl.pathname.startsWith("/register")
 
       if (isAuthPage) {
         if (isLoggedIn) return Response.redirect(new URL("/dashboard", nextUrl))

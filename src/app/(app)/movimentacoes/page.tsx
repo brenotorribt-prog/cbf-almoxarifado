@@ -40,10 +40,13 @@ import {
   PackageX,
   X,
   Hash,
+  Eye,
+  FileText,
 } from "lucide-react"
 
 import NovaMovimentacaoModal from "@/components/movimentacoes/modals/nova-movimentacao"
 import NovoEmprestimoModal from "@/components/movimentacoes/modals/novo-emprestimo"
+import { downloadPDF, viewPDF } from "@/lib/pdf-helper"
 
 // =====================================================================
 // TIPOS
@@ -470,6 +473,7 @@ export default function MovimentacoesPage() {
                   <HeaderCell style={{ width: 110 }}>Quantidade</HeaderCell>
                   <HeaderCell>Motivo</HeaderCell>
                   <HeaderCell style={{ width: 150 }}>Quando / quem</HeaderCell>
+                  <HeaderCell style={{ width: 100, justifyContent: 'flex-end' }}>Ações</HeaderCell>
                 </TableHeader>
 
                 <RowsSizer style={{ height: virtualizerHistorico.getTotalSize() }}>
@@ -516,6 +520,24 @@ export default function MovimentacoesPage() {
                           <RowNome style={{ fontSize: theme.typography.fontSize.xs }}>{mov.usuario.name}</RowNome>
                           <RowMeta>{formatarDataHora(mov.createdAt)}</RowMeta>
                         </RowInfo>
+
+                        {/* Botões de PDF */}
+                        <AcoesLinha style={{ justifyContent: 'flex-end' }}>
+                          <AcaoIconButton
+                            title="Visualizar PDF"
+                            $cor={theme.colors.primary.vivid}
+                            onClick={() => viewPDF('movimentacao', mov.id)}
+                          >
+                            <Eye size={15} />
+                          </AcaoIconButton>
+                          <AcaoIconButton
+                            title="Baixar PDF"
+                            $cor={theme.colors.status.success}
+                            onClick={() => downloadPDF('movimentacao', mov.id)}
+                          >
+                            <FileText size={15} />
+                          </AcaoIconButton>
+                        </AcoesLinha>
                       </RowHistorico>
                     )
                   })}
@@ -571,13 +593,14 @@ export default function MovimentacoesPage() {
 
             {!emprestimosQuery.isLoading && !emprestimosQuery.isError && emprestimos.length > 0 && (
               <>
-                <TableHeader style={{ height: ALTURA_CABECALHO }}>
+                <TableHeaderEmprestimo style={{ height: ALTURA_CABECALHO }}>
                   <HeaderCell>Material</HeaderCell>
                   <HeaderCell>Emprestado para</HeaderCell>
                   <HeaderCell style={{ width: 110 }}>Devolução</HeaderCell>
                   <HeaderCell style={{ width: 150 }}>Status</HeaderCell>
                   <HeaderCell style={{ width: 130 }}>Ações</HeaderCell>
-                </TableHeader>
+                  <HeaderCell style={{ width: 100 }}>PDF</HeaderCell>
+                </TableHeaderEmprestimo>
 
                 <RowsSizer style={{ height: virtualizerEmprestimos.getTotalSize() }}>
                   {itensEmprestimos.map((item) => {
@@ -639,6 +662,24 @@ export default function MovimentacoesPage() {
                             </>
                           )}
                         </AcoesLinha>
+
+                        {/* Botões de PDF para empréstimos */}
+                        <AcoesLinha>
+                          <AcaoIconButton
+                            title="Visualizar PDF"
+                            $cor={theme.colors.primary.vivid}
+                            onClick={() => viewPDF('emprestimo', emp.id)}
+                          >
+                            <Eye size={15} />
+                          </AcaoIconButton>
+                          <AcaoIconButton
+                            title="Baixar PDF"
+                            $cor={theme.colors.status.success}
+                            onClick={() => downloadPDF('emprestimo', emp.id)}
+                          >
+                            <FileText size={15} />
+                          </AcaoIconButton>
+                        </AcoesLinha>
                       </RowEmprestimo>
                     )
                   })}
@@ -682,12 +723,12 @@ export default function MovimentacoesPage() {
 
             {!aprovacoesQuery.isLoading && !aprovacoesQuery.isError && pendentesAprovacao.length > 0 && (
               <>
-                <TableHeader style={{ height: ALTURA_CABECALHO }}>
+                <TableHeaderAprovacao style={{ height: ALTURA_CABECALHO }}>
                   <HeaderCell>Material</HeaderCell>
                   <HeaderCell>Solicitado para</HeaderCell>
                   <HeaderCell style={{ width: 150 }}>Pedido em</HeaderCell>
                   <HeaderCell style={{ width: 170 }}>Ações</HeaderCell>
-                </TableHeader>
+                </TableHeaderAprovacao>
 
                 <RowsSizer style={{ height: virtualizerAprovacoes.getTotalSize() }}>
                   {itensAprovacoes.map((item) => {
@@ -774,9 +815,13 @@ export default function MovimentacoesPage() {
       {mostrarNovaMovimentacao && (
         <NovaMovimentacaoModal
           onClose={() => setMostrarNovaMovimentacao(false)}
-          onSalvo={() => {
+          onSalvo={(movimentacaoId) => {
             setMostrarNovaMovimentacao(false)
             queryClient.invalidateQueries({ queryKey: ["movimentacoes"] })
+            
+            if (movimentacaoId) {
+              downloadPDF('movimentacao', movimentacaoId)
+            }
           }}
         />
       )}
@@ -784,10 +829,14 @@ export default function MovimentacoesPage() {
       {mostrarNovoEmprestimo && (
         <NovoEmprestimoModal
           onClose={() => setMostrarNovoEmprestimo(false)}
-          onSalvo={() => {
+          onSalvo={(emprestimoId) => {
             setMostrarNovoEmprestimo(false)
             queryClient.invalidateQueries({ queryKey: ["emprestimos"] })
             queryClient.invalidateQueries({ queryKey: ["movimentacoes"] })
+            
+            if (emprestimoId) {
+              downloadPDF('emprestimo', emprestimoId)
+            }
           }}
         />
       )}
@@ -1170,7 +1219,45 @@ const ListContainer = styled.div`
 
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: 130px minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1fr) 140px;
+  grid-template-columns: 130px minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1fr) 140px 100px;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing[3]};
+  padding: 0 ${({ theme }) => theme.spacing[4]};
+  background: ${({ theme }) => hexToRgba(theme.colors.surface.sidebar, 0.8)};
+  border-bottom: 1px solid ${({ theme }) => theme.colors.surface.border};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+  color: ${({ theme }) => theme.colors.text.muted};
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+`
+
+const TableHeaderEmprestimo = styled.div`
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 110px 150px 130px 100px;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing[3]};
+  padding: 0 ${({ theme }) => theme.spacing[4]};
+  background: ${({ theme }) => hexToRgba(theme.colors.surface.sidebar, 0.8)};
+  border-bottom: 1px solid ${({ theme }) => theme.colors.surface.border};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+  color: ${({ theme }) => theme.colors.text.muted};
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+`
+
+const TableHeaderAprovacao = styled.div`
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 150px 170px;
   align-items: center;
   gap: ${({ theme }) => theme.spacing[3]};
   padding: 0 ${({ theme }) => theme.spacing[4]};
@@ -1216,11 +1303,11 @@ const RowBase = styled.div`
 `
 
 const RowHistorico = styled(RowBase)`
-  grid-template-columns: 130px minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1fr) 140px;
+  grid-template-columns: 130px minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1fr) 140px 100px;
 `
 
 const RowEmprestimo = styled(RowBase)`
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 110px 150px 130px;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 110px 150px 130px 100px;
 `
 
 const RowAprovacao = styled(RowBase)`

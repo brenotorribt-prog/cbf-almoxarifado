@@ -1,7 +1,22 @@
+// src/app/api/compras/[id]/itens/route.ts
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/require-role"
+import { Prisma } from "@prisma/client"
+
+// Select do material para consistência com o resto da aplicação
+const MATERIAL_SELECT = {
+  id: true,
+  nome: true,
+  codigoInterno: true,
+  descricao: true,
+  marca: true,
+  fabricante: true,
+  modelo: true,
+  fornecedor: true,
+  unidadeMedida: { select: { sigla: true } },
+} satisfies Prisma.MaterialSelect
 
 const itemSchema = z
   .object({
@@ -75,18 +90,31 @@ export async function POST(
       observacao: dados.observacao || null,
       prazoMaximoNecessario: dados.prazoMaximoNecessario ? new Date(dados.prazoMaximoNecessario) : null,
     },
-    include: { material: { select: { id: true, nome: true, marca: true, fabricante: true, modelo: true, fornecedor: true } } },
+    include: { 
+      material: { 
+        select: MATERIAL_SELECT
+      } 
+    },
   })
 
   // se o pedido estava CONCLUIDO isso já foi bloqueado acima; se estava
   // PARCIALMENTE_RECEBIDO, voltar pra ABERTO faz sentido (tem item novo
   // pendente de novo)
   if (pedido.status === "PARCIALMENTE_RECEBIDO") {
-    await prisma.pedidoCompra.update({ where: { id }, data: { status: "ABERTO" } })
+    await prisma.pedidoCompra.update({ 
+      where: { id }, 
+      data: { status: "ABERTO" } 
+    })
   }
 
   return NextResponse.json(
-    { item: { ...item, quantidade: Number(item.quantidade), quantidadeRecebida: Number(item.quantidadeRecebida) } },
+    { 
+      item: { 
+        ...item, 
+        quantidade: Number(item.quantidade), 
+        quantidadeRecebida: Number(item.quantidadeRecebida) 
+      } 
+    },
     { status: 201 }
   )
 }

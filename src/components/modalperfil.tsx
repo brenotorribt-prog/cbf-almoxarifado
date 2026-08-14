@@ -24,13 +24,11 @@ import {
 import { formatarTelefone } from "@/lib/telefone-mask"
 
 // =====================================================================
-// HELPERS — compressão de avatar (reaproveita a mesma técnica da foto de
-// material, mas pula a compressão se o arquivo já for pequeno — abaixo
-// de 1000KB não compensa gastar CPU do usuário recomprimindo)
+// HELPERS — compressão de avatar
 // =====================================================================
 
 const LIMITE_SEM_COMPRESSAO = 1000 * 1024 // 1000KB
-const MAX_DIMENSAO_AVATAR = 800 // avatar é exibido pequeno, não precisa de 1600px
+const MAX_DIMENSAO_AVATAR = 800
 const QUALIDADE_JPEG = 0.85
 const TAMANHO_MAXIMO_ORIGINAL = 15 * 1024 * 1024
 
@@ -69,15 +67,9 @@ function comprimirImagem(file: File, maxDimensao: number, qualidade: number): Pr
   })
 }
 
-// Se já está pequeno, usa o arquivo original direto — evita gastar CPU
-// comprimindo algo que já está abaixo do que a gente aceitaria de saída.
 async function processarAvatar(file: File): Promise<Blob> {
   if (file.size <= LIMITE_SEM_COMPRESSAO) return file
   return comprimirImagem(file, MAX_DIMENSAO_AVATAR, QUALIDADE_JPEG)
-}
-
-function formatarKB(bytes: number) {
-  return `${(bytes / 1024).toFixed(0)} KB`
 }
 
 function getInitials(nome: string, sobrenome: string) {
@@ -123,7 +115,7 @@ const glassCardStyles = `
   box-shadow: ${theme.shadows.card};
 `
 
-const ModalOverlay = styled.div`
+const ModalOverlay = styled.div<{ $fechando?: boolean }>`
   position: fixed;
   inset: 0;
   background: ${({ theme }) => theme.colors.surface.overlay};
@@ -134,6 +126,16 @@ const ModalOverlay = styled.div`
   z-index: ${({ theme }) => theme.zIndex.modal};
   padding: ${({ theme }) => theme.spacing[4]};
   animation: ${fadeIn} 0.15s ease both;
+  cursor: ${({ $fechando }) => ($fechando ? 'wait' : 'default')};
+
+  ${({ $fechando }) =>
+    $fechando &&
+    `
+    ${ModalCard} {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+  `}
 `
 
 const ModalCard = styled.form`
@@ -148,7 +150,9 @@ const ModalCard = styled.form`
   gap: ${({ theme }) => theme.spacing[6]};
   animation: ${slideIn} 0.2s ease both;
 
-  &::-webkit-scrollbar { width: 6px; }
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
   &::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.12);
     border-radius: ${({ theme }) => theme.radii.full};
@@ -179,6 +183,10 @@ const FecharButton = styled.button`
   &:hover {
     background: ${({ theme }) => theme.colors.surface.glass};
     color: ${({ theme }) => theme.colors.text.primary};
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `
 
@@ -213,6 +221,11 @@ const AvatarPreviewWrapper = styled.button`
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 `
 
@@ -318,7 +331,10 @@ const AvisoErro = styled.div`
   color: ${({ theme }) => theme.colors.status.error};
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
 
-  svg { flex-shrink: 0; margin-top: 1px; }
+  svg {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
 `
 
 const AvisoSucesso = styled.div`
@@ -331,6 +347,22 @@ const AvisoSucesso = styled.div`
   border: 1px solid ${({ theme }) => theme.colors.status.successBorder};
   color: ${({ theme }) => theme.colors.status.success};
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
+`
+
+const AvisoInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing[2]};
+  padding: ${({ theme }) => theme.spacing[3]};
+  border-radius: ${({ theme }) => theme.radii.md};
+  background: ${({ theme }) => hexToRgba(theme.colors.primary.vivid, 0.08)};
+  border: 1px solid ${({ theme }) => hexToRgba(theme.colors.primary.vivid, 0.2)};
+  color: ${({ theme }) => theme.colors.primary.vivid};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+
+  svg.spin {
+    animation: ${spin} 0.7s linear infinite;
+  }
 `
 
 const SkeletonLinha = styled.div`
@@ -373,8 +405,13 @@ const ActionButton = styled.button<{ $variant: "primary" | "ghost" }>`
     &:hover:not(:disabled) { background: ${theme.colors.surface.glass}; color: ${theme.colors.text.primary}; }
   `}
 
-  &:disabled { opacity: 0.6; cursor: not-allowed; }
-  svg.spin { animation: ${spin} 0.7s linear infinite; }
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  svg.spin {
+    animation: ${spin} 0.7s linear infinite;
+  }
 `
 
 // =====================================================================
@@ -403,10 +440,13 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
   const inputAvatarRef = useRef<HTMLInputElement>(null)
 
   const [salvando, setSalvando] = useState(false)
+  const [fechando, setFechando] = useState(false)
   const [erroGeral, setErroGeral] = useState<string | null>(null)
   const [sucesso, setSucesso] = useState<string | null>(null)
+  const [sucessoSenha, setSucessoSenha] = useState<string | null>(null)
   const [errosCampo, setErrosCampo] = useState<Record<string, string>>({})
 
+  // Carrega perfil
   useEffect(() => {
     let ativo = true
     async function carregar() {
@@ -435,6 +475,7 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
     }
   }, [])
 
+  // Limpa URL do preview
   useEffect(() => {
     return () => {
       if (avatarPreviewUrl) URL.revokeObjectURL(avatarPreviewUrl)
@@ -503,11 +544,12 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
     e.preventDefault()
     setErroGeral(null)
     setSucesso(null)
+    setSucessoSenha(null)
     if (!validar()) return
 
     setSalvando(true)
     try {
-      let avatarUrlParaEnviar: string | undefined = undefined // undefined = não mudou
+      let avatarUrlParaEnviar: string | undefined = undefined
 
       if (avatarBlobComprimido) {
         const formData = new FormData()
@@ -535,6 +577,7 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
       const dadosPerfil = await resPerfil.json()
       if (!resPerfil.ok) throw new Error(dadosPerfil.error ?? "Erro ao salvar perfil.")
 
+      let senhaAlterada = false
       if (senhaAtual && novaSenha) {
         const resSenha = await fetch("/api/perfil/senha", {
           method: "PATCH",
@@ -543,10 +586,10 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
         })
         const dadosSenha = await resSenha.json()
         if (!resSenha.ok) throw new Error(dadosSenha.error ?? "Erro ao trocar senha.")
+        senhaAlterada = true
       }
 
-      // atualiza a sessão do NextAuth pra sidebar refletir nome/avatar
-      // novos sem precisar deslogar
+      // Atualiza a sessão do NextAuth
       await atualizarSessao({
         name: dadosPerfil.usuario.name,
         image: dadosPerfil.usuario.image,
@@ -555,23 +598,35 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
       setSenhaAtual("")
       setNovaSenha("")
       setConfirmarNovaSenha("")
-      setSucesso("Perfil atualizado com sucesso.")
+
+      if (senhaAlterada) {
+        setSucessoSenha("✅ Senha alterada com sucesso!")
+      }
+      setSucesso("✅ Perfil atualizado com sucesso!")
+
+      // Fecha o modal automaticamente após 2 segundos
+      setFechando(true)
+      setTimeout(() => {
+        onClose()
+      }, 2000)
+
     } catch (err) {
       setErroGeral(err instanceof Error ? err.message : "Erro ao salvar alterações.")
+      setFechando(false)
     } finally {
       setSalvando(false)
     }
   }
 
-  const bloqueado = salvando || carregando
+  const bloqueado = salvando || carregando || fechando
   const previewExibido = avatarPreviewUrl ?? (!avatarRemovido ? avatarUrlAtual : null)
 
   return (
-    <ModalOverlay onClick={() => !salvando && onClose()}>
+    <ModalOverlay $fechando={fechando} onClick={() => !bloqueado && onClose()}>
       <ModalCard onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit}>
         <ModalTopo>
           <ModalTitle>Meu perfil</ModalTitle>
-          <FecharButton type="button" onClick={onClose} title="Fechar">
+          <FecharButton type="button" onClick={onClose} disabled={bloqueado} title="Fechar">
             <X size={18} />
           </FecharButton>
         </ModalTopo>
@@ -582,7 +637,27 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
             <span>{erroGeral}</span>
           </AvisoErro>
         )}
-        {sucesso && <AvisoSucesso>{sucesso}</AvisoSucesso>}
+
+        {sucesso && (
+          <AvisoSucesso>
+            <Check size={16} />
+            <span>{sucesso}</span>
+          </AvisoSucesso>
+        )}
+
+        {sucessoSenha && (
+          <AvisoSucesso>
+            <Check size={16} />
+            <span>{sucessoSenha}</span>
+          </AvisoSucesso>
+        )}
+
+        {fechando && (
+          <AvisoInfo>
+            <Loader2 size={16} className="spin" />
+            <span>Redirecionando...</span>
+          </AvisoInfo>
+        )}
 
         {carregando ? (
           <>
@@ -596,10 +671,10 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
               <AvatarPreviewWrapper
                 type="button"
                 onClick={() => inputAvatarRef.current?.click()}
-                disabled={processandoAvatar}
+                disabled={processandoAvatar || bloqueado}
               >
                 {processandoAvatar ? (
-                  <Loader2 size={20} style={{ animation: "spin 0.7s linear infinite" }} />
+                  <Loader2 size={20} className="spin" />
                 ) : previewExibido ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={previewExibido} alt="Avatar" />
@@ -618,10 +693,11 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
                 type="file"
                 accept="image/*"
                 onChange={handleSelecionarAvatar}
+                disabled={bloqueado}
               />
 
               {previewExibido ? (
-                <ActionButton type="button" $variant="ghost" onClick={removerAvatar} style={{ padding: "4px 10px" }}>
+                <ActionButton type="button" $variant="ghost" onClick={removerAvatar} disabled={bloqueado} style={{ padding: "4px 10px" }}>
                   Remover foto
                 </ActionButton>
               ) : (
@@ -726,7 +802,7 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
         )}
 
         <ModalActions>
-          <ActionButton type="button" $variant="ghost" disabled={salvando} onClick={onClose}>
+          <ActionButton type="button" $variant="ghost" disabled={bloqueado} onClick={onClose}>
             Cancelar
           </ActionButton>
           <ActionButton type="submit" $variant="primary" disabled={bloqueado || processandoAvatar}>

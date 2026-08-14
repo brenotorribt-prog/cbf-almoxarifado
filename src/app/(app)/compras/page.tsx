@@ -3,16 +3,31 @@
 /**
  * /compras — Pedidos de compra de materiais
  * ------------------------------------------------------------------
- * Lista de pedidos (cada um com N itens, status independente por item).
- * Botões "Novo pedido", "Adicionar item" e "Exportar" já estão ligados
- * a states/handlers prontos — os modais em si (CriarPedidoModal,
- * AdicionarItemModal) e a exportação em Excel entram em componentes
- * separados numa próxima etapa. Enquanto isso, mudar status de um item
- * já funciona direto na lista (PATCH inline, sem precisar de modal).
+ * Lista virtualizada com scroll infinito real.
+ * - Pedidos começam recolhidos
+ * - Expandem ao passar o mouse
+ * - Recolhem ao tirar o mouse (com pequeno debounce anti-flicker)
+ * - Itens clicáveis com feedback visual
+ * - "Todos os pedidos carregados" aparece apenas no final, sem sobreposição
+ *
+ * FIX: a altura de cada linha agora é MEDIDA DINAMICAMENTE pelo
+ * @tanstack/react-virtual (measureElement), em vez de fixa em 90px.
+ * Antes disso, ao expandir um pedido no hover, o conteúdo extra
+ * "vazava" para fora da linha (que continuava com 90px de altura
+ * reservada no virtualizador) e o próximo item — posicionado por cima
+ * dele — roubava os eventos de mouse, causando abrir/fechar em loop.
+ * Como consequência, a altura total da lista também ficava errada e
+ * o rodapé "Todos os pedidos carregados" acabava sobreposto ao último
+ * card. Com measureElement, o virtualizador reposiciona tudo abaixo
+ * do card expandido corretamente, e getTotalSize() reflete a altura
+ * real — resolvendo os dois problemas de uma vez.
  */
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useSession } from "next-auth/react"
 import styled, { keyframes } from "styled-components"
+import { useVirtualizer } from "@tanstack/react-virtual"
+import { useInfiniteQuery } from "@tanstack/react-query"
 import { theme, hexToRgba } from "@/styles/theme"
 import {
   ShoppingCart,
@@ -27,15 +42,13 @@ import {
   Building2,
   Briefcase,
   CalendarClock,
-  FileSpreadsheet,
   X,
   Check,
+  ChevronRight,
 } from "lucide-react"
 import CriarPedidoModal from "@/components/compras/modals/criar"
 import AdicionarItemModal from "@/components/compras/modals/adicionar-item"
-
-// TODO: componentes a construir em etapas separadas
-// import ExportarComprasButton from "@/components/compras/exportar"
+import ExportarComprasButton from "@/components/compras/exportar-button"
 
 // =====================================================================
 // TIPOS
@@ -45,16 +58,31 @@ type StatusPedido = "ABERTO" | "PARCIALMENTE_RECEBIDO" | "CONCLUIDO" | "CANCELAD
 type StatusItem = "EM_ESPERA" | "ORCANDO" | "APROVADO" | "AGUARDANDO_ENTREGA" | "RECEBIDO" | "CANCELADO"
 type TipoItem = "MATERIAL_EXISTENTE" | "MATERIAL_NOVO"
 type FiltroStatus = "TODOS" | StatusPedido
+type PeriodoTipo = "HOJE" | "SETE_DIAS" | "MES" | "TUDO" | "PERSONALIZADO"
 
 interface ItemPedido {
   id: string
   pedidoId: string
   tipo: TipoItem
   materialId: string | null
-  material: { id: string; nome: string } | null
+  material: {
+    id: string
+    nome: string
+    codigoInterno: string
+    descricao: string | null
+    marca: string | null
+    fabricante: string | null
+    modelo: string | null
+    fornecedor: string | null
+    unidadeMedida: { sigla: string } | null
+  } | null
   nomeMaterialNovo: string | null
   descricaoNovo: string | null
   unidadeSugerida: string | null
+  marcaNovo: string | null
+  fabricanteNovo: string | null
+  modeloNovo: string | null
+  fornecedorNovo: string | null
   quantidade: number
   quantidadeRecebida: number
   status: StatusItem
@@ -77,8 +105,22 @@ interface Pedido {
   itens: ItemPedido[]
 }
 
+interface PageData {
+  pedidos: Pedido[]
+  nextCursor: number | null
+  setoresDisponiveis: string[]
+  resumo: {
+    abertos: number
+    parciais: number
+    aguardandoEntrega: number
+    orcando: number
+  }
+}
+
+const PAPEIS_SEM_CRIAR = new Set(["SOLICITANTE"])
+
 // =====================================================================
-// CONFIG DE STATUS (label + cor)
+// CONFIG DE STATUS
 // =====================================================================
 
 const STATUS_ITEM_CONFIG: Record<StatusItem, { label: string; cor: keyof typeof theme.colors.status | "muted" }> = {
@@ -107,29 +149,37 @@ function formatarData(iso: string | null) {
   return new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
-// status de item que o usuário pode escolher manualmente. RECEBIDO fica
-// de fora de propósito — só a futura tela de Movimentações pode setar
-// isso, pra manter o vínculo com a entrada real em estoque.
 const STATUS_ITEM_EDITAVEIS: StatusItem[] = ["EM_ESPERA", "ORCANDO", "APROVADO", "AGUARDANDO_ENTREGA", "CANCELADO"]
+
+// =====================================================================
+// CONSTANTES
+// =====================================================================
+
+const ALTURA_LINHA = 90 // usada apenas como estimativa inicial do virtualizador
+const LIMIT = 40
+const PAGINAS_PARA_MANTER = 3
+const DELAY_RECOLHER_MS = 150 // debounce do mouseleave, evita flicker
 
 // =====================================================================
 // ANIMAÇÕES
 // =====================================================================
 
-const fadeInUp = keyframes`
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-`
 const pulse = keyframes`
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 `
+
 const spin = keyframes`
   to { transform: rotate(360deg); }
 `
 
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+`
+
 // =====================================================================
-// LAYOUT
+// STYLED COMPONENTS
 // =====================================================================
 
 const glassCardStyles = `
@@ -148,6 +198,7 @@ const PageWrapper = styled.div`
   display: flex;
   flex-direction: column;
   gap: ${({ theme }) => theme.spacing[8]};
+  height: 100%;
 `
 
 const HeaderRow = styled.div`
@@ -220,35 +271,6 @@ const PrimaryButton = styled.button`
   }
 `
 
-const SecondaryButton = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: ${({ theme }) => theme.spacing[2]};
-  padding: ${({ theme }) => `${theme.spacing[3]} ${theme.spacing[4]}`};
-  border-radius: ${({ theme }) => theme.radii.md};
-  background: transparent;
-  border: 1px solid ${({ theme }) => theme.colors.surface.border};
-  color: ${({ theme }) => theme.colors.text.secondary};
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
-  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
-  transition: all ${({ theme }) => theme.transitions.fast};
-  flex-shrink: 0;
-
-  &:hover:not(:disabled) {
-    background: ${({ theme }) => theme.colors.surface.glass};
-    color: ${({ theme }) => theme.colors.text.primary};
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`
-
-// =====================================================================
-// STATS
-// =====================================================================
-
 const StatsGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -290,10 +312,6 @@ const StatLabel = styled.span`
   text-transform: uppercase;
   letter-spacing: 0.08em;
 `
-
-// =====================================================================
-// TOOLBAR
-// =====================================================================
 
 const Toolbar = styled.div`
   display: flex;
@@ -368,71 +386,82 @@ const FiltroSelect = styled.select`
   }
 `
 
-// =====================================================================
-// LISTA DE PEDIDOS
-// =====================================================================
+const ListContainer = styled.div`
+  ${glassCardStyles}
+  flex: 1;
+  min-height: 420px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  padding: ${({ theme }) => theme.spacing[2]};
 
-const ListaPedidos = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.spacing[4]};
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: ${({ theme }) => theme.radii.full};
+  }
 `
 
-const PedidoCard = styled.div<{ $index: number }>`
+const RowsSizer = styled.div`
+  position: relative;
+  width: 100%;
+`
+
+// =====================================================================
+// PEDIDO CARD - com hover expand
+// =====================================================================
+
+const PedidoCardWrapper = styled.div`
   ${glassCardStyles}
-  padding: ${({ theme }) => theme.spacing[5]};
-  display: flex;
-  flex-direction: column;
-  gap: ${({ theme }) => theme.spacing[4]};
-  animation: ${fadeInUp} 0.3s ease both;
-  animation-delay: ${({ $index }) => Math.min($index, 10) * 40}ms;
+  padding: ${({ theme }) => theme.spacing[4]};
+  margin-bottom: ${({ theme }) => theme.spacing[2]};
+  transition: border-color ${({ theme }) => theme.transitions.fast}, box-shadow ${({ theme }) => theme.transitions.fast};
+  cursor: pointer;
+
+  &:hover {
+    border-color: ${({ theme }) => hexToRgba(theme.colors.primary.vivid, 0.4)};
+    box-shadow: ${({ theme }) => `0 4px 20px ${hexToRgba(theme.colors.primary.vivid, 0.1)}`};
+  }
 `
 
 const PedidoTopo = styled.div`
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: ${({ theme }) => theme.spacing[3]};
   flex-wrap: wrap;
-  cursor: pointer;
 `
 
 const PedidoInfo = styled.div`
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-`
-
-const PedidoNumero = styled.span`
-  font-size: ${({ theme }) => theme.typography.fontSize.xs};
-  color: ${({ theme }) => theme.colors.text.muted};
-  font-family: ${({ theme }) => theme.typography.fontFamily.mono};
-`
-
-const SolicitanteLinha = styled.div`
-  display: flex;
   align-items: center;
   gap: ${({ theme }) => theme.spacing[4]};
   flex-wrap: wrap;
-  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  min-width: 0;
+  flex: 1;
 `
 
-const SolicitanteDado = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+const PedidoNumero = styled.span`
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+  color: ${({ theme }) => theme.colors.text.primary};
+  font-family: ${({ theme }) => theme.typography.fontFamily.mono};
+`
+
+const SolicitanteNome = styled.span`
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
   color: ${({ theme }) => theme.colors.text.secondary};
+`
 
-  svg {
-    color: ${({ theme }) => theme.colors.text.muted};
-    flex-shrink: 0;
-  }
-
-  strong {
-    color: ${({ theme }) => theme.colors.text.primary};
-    font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
-  }
+const SolicitanteSetor = styled.span`
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.text.muted};
+  background: ${({ theme }) => theme.colors.surface.glass};
+  padding: 2px 8px;
+  border-radius: ${({ theme }) => theme.radii.full};
+  border: 1px solid ${({ theme }) => theme.colors.surface.border};
 `
 
 const PedidoAcoes = styled.div`
@@ -465,29 +494,23 @@ const StatusBadge = styled.span<{ $cor: string }>`
   }
 `
 
-const ChevronButton = styled.button`
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: ${({ theme }) => theme.radii.md};
-  color: ${({ theme }) => theme.colors.text.muted};
-
-  &:hover {
-    background: ${({ theme }) => theme.colors.surface.glass};
-    color: ${({ theme }) => theme.colors.text.primary};
-  }
+const ExpandIcon = styled(ChevronRight)<{ $expandido: boolean }>`
+  transition: transform ${({ theme }) => theme.transitions.fast};
+  transform: ${({ $expandido }) => ($expandido ? "rotate(90deg)" : "rotate(0deg)")};
 `
 
-// -------- itens do pedido --------
+// =====================================================================
+// ITENS - com feedback visual de clique
+// =====================================================================
 
-const ItensLista = styled.div`
+const ItensContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: ${({ theme }) => theme.spacing[2]};
   padding-top: ${({ theme }) => theme.spacing[3]};
+  margin-top: ${({ theme }) => theme.spacing[3]};
   border-top: 1px solid ${({ theme }) => theme.colors.surface.border};
+  animation: ${fadeIn} 0.2s ease both;
 `
 
 const ItemRow = styled.div`
@@ -498,6 +521,37 @@ const ItemRow = styled.div`
   padding: ${({ theme }) => theme.spacing[3]};
   border-radius: ${({ theme }) => theme.radii.md};
   background: ${({ theme }) => theme.colors.surface.glass};
+  cursor: pointer;
+  transition: all ${({ theme }) => theme.transitions.fast};
+  border: 1px solid transparent;
+  position: relative;
+
+  &:hover {
+    background: ${({ theme }) => hexToRgba(theme.colors.primary.vivid, 0.06)};
+    border-color: ${({ theme }) => hexToRgba(theme.colors.primary.vivid, 0.2)};
+    transform: translateX(4px);
+  }
+
+  &:active {
+    transform: scale(0.99);
+  }
+
+  /* Indicador visual de que é clicável - pequena seta à direita */
+  &::after {
+    content: "›";
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 18px;
+    color: ${({ theme }) => theme.colors.text.muted};
+    opacity: 0;
+    transition: opacity ${({ theme }) => theme.transitions.fast};
+  }
+
+  &:hover::after {
+    opacity: 0.6;
+  }
 
   @media (max-width: ${({ theme }) => theme.breakpoints.lg}) {
     grid-template-columns: 1fr;
@@ -571,6 +625,28 @@ const ItemObservacao = styled.span`
   text-overflow: ellipsis;
 `
 
+const ItemDetalhesExpandido = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  padding: 10px 12px;
+  margin-top: -4px;
+  margin-bottom: 4px;
+  border-radius: 8px;
+  background: ${({ theme }) => hexToRgba(theme.colors.status.info, 0.06)};
+  border: 1px solid ${({ theme }) => hexToRgba(theme.colors.status.info, 0.16)};
+  font-size: 12px;
+  animation: ${fadeIn} 0.2s ease both;
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.md}) {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  @media (max-width: ${({ theme }) => theme.breakpoints.sm}) {
+    grid-template-columns: 1fr;
+  }
+`
+
 const AdicionarItemButton = styled.button`
   display: inline-flex;
   align-items: center;
@@ -591,13 +667,9 @@ const AdicionarItemButton = styled.button`
   }
 `
 
-// =====================================================================
-// ESTADOS
-// =====================================================================
-
 const SkeletonCard = styled.div`
   ${glassCardStyles}
-  height: 140px;
+  height: 80px;
   animation: ${pulse} 1.4s ease-in-out infinite;
 `
 
@@ -647,6 +719,33 @@ const RetryButton = styled.button`
   }
 `
 
+const CarregandoMais = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: ${({ theme }) => theme.spacing[2]};
+  padding: ${({ theme }) => theme.spacing[3]};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.text.muted};
+
+  svg {
+    animation: ${spin} 0.7s linear infinite;
+  }
+`
+
+const FimLista = styled.div`
+  text-align: center;
+  padding: ${({ theme }) => theme.spacing[4]};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  color: ${({ theme }) => theme.colors.text.muted};
+  border-top: 1px solid ${({ theme }) => theme.colors.surface.border};
+  margin-top: ${({ theme }) => theme.spacing[2]};
+  background: ${({ theme }) => theme.colors.surface.glass};
+  border-radius: ${({ theme }) => theme.radii.md};
+  position: relative;
+  z-index: 1;
+`
+
 const Toast = styled.div<{ $tone: "success" | "error" }>`
   position: fixed;
   top: ${({ theme }) => theme.spacing[6]};
@@ -661,31 +760,82 @@ const Toast = styled.div<{ $tone: "success" | "error" }>`
   gap: ${({ theme }) => theme.spacing[2]};
   color: ${({ theme, $tone }) => ($tone === "success" ? theme.colors.status.success : theme.colors.status.error)};
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  animation: ${fadeIn} 0.2s ease both;
 `
 
 // =====================================================================
-// COMPONENTE
+// COMPONENTE PRINCIPAL
 // =====================================================================
 
 export default function ComprasPage() {
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
-  const [setoresDisponiveis, setSetoresDisponiveis] = useState<string[]>([])
-  const [carregando, setCarregando] = useState(true)
-  const [erro, setErro] = useState<string | null>(null)
+  const { data: sessao } = useSession()
+  const podeCriar = !PAPEIS_SEM_CRIAR.has(
+    (sessao?.user as { role?: string } | undefined)?.role ?? ""
+  )
 
   const [busca, setBusca] = useState("")
   const [buscaDebounced, setBuscaDebounced] = useState("")
   const [setorFiltro, setSetorFiltro] = useState("")
   const [statusFiltro, setStatusFiltro] = useState<FiltroStatus>("TODOS")
 
-  const [pedidosExpandidos, setPedidosExpandidos] = useState<Record<string, boolean>>({})
+  // Estado para controlar qual pedido está expandido (apenas 1 por vez)
+  const [pedidoExpandidoId, setPedidoExpandidoId] = useState<string | null>(null)
+  const [itensExpandidos, setItensExpandidos] = useState<Record<string, boolean>>({})
   const [itensSalvando, setItensSalvando] = useState<Record<string, boolean>>({})
+
+  const [periodoTipo, setPeriodoTipo] = useState<PeriodoTipo>("HOJE")
+  const [dataInicioFiltro, setDataInicioFiltro] = useState(() => new Date().toISOString().slice(0, 10))
+  const [dataFimFiltro, setDataFimFiltro] = useState(() => new Date().toISOString().slice(0, 10))
 
   const [toast, setToast] = useState<{ tone: "success" | "error"; texto: string } | null>(null)
 
-  // states já prontos pros modais que entram na próxima etapa
   const [mostrarCriarPedido, setMostrarCriarPedido] = useState(false)
   const [pedidoParaAdicionarItem, setPedidoParaAdicionarItem] = useState<string | null>(null)
+
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  // Timeout do debounce de "recolher ao tirar o mouse" — evita que um
+  // movimento rápido do cursor entre elementos internos feche e reabra
+  // o card em sequência (flicker).
+  const collapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (collapseTimeoutRef.current) clearTimeout(collapseTimeoutRef.current)
+    }
+  }, [])
+
+  function selecionarPeriodo(tipo: PeriodoTipo) {
+    setPeriodoTipo(tipo)
+    if (tipo === "PERSONALIZADO" || tipo === "TUDO") return
+    const fim = new Date().toISOString().slice(0, 10)
+    const inicio = new Date()
+    if (tipo === "SETE_DIAS") inicio.setDate(inicio.getDate() - 6)
+    if (tipo === "MES") inicio.setDate(inicio.getDate() - 29)
+    setDataInicioFiltro(tipo === "HOJE" ? fim : inicio.toISOString().slice(0, 10))
+    setDataFimFiltro(fim)
+  }
+
+  function toggleItem(itemId: string) {
+    setItensExpandidos((prev) => ({ ...prev, [itemId]: !prev[itemId] }))
+  }
+
+  // Hover do pedido - expande/recolhe
+  function handleMouseEnter(pedidoId: string) {
+    if (collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current)
+      collapseTimeoutRef.current = null
+    }
+    setPedidoExpandidoId((atual) => (atual === pedidoId ? atual : pedidoId))
+  }
+
+  function handleMouseLeave() {
+    if (collapseTimeoutRef.current) clearTimeout(collapseTimeoutRef.current)
+    collapseTimeoutRef.current = setTimeout(() => {
+      setPedidoExpandidoId(null)
+      collapseTimeoutRef.current = null
+    }, DELAY_RECOLHER_MS)
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setBuscaDebounced(busca.trim()), 350)
@@ -698,43 +848,94 @@ export default function ComprasPage() {
     return () => clearTimeout(t)
   }, [toast])
 
-  const carregarPedidos = useCallback(async () => {
-    setCarregando(true)
-    setErro(null)
-    try {
-      const params = new URLSearchParams()
-      if (buscaDebounced) params.set("busca", buscaDebounced)
-      if (setorFiltro) params.set("setor", setorFiltro)
-      if (statusFiltro !== "TODOS") params.set("status", statusFiltro)
-
-      const res = await fetch(`/api/compras?${params.toString()}`)
-      if (!res.ok) throw new Error("Falha ao carregar pedidos")
-      const data = await res.json()
-      setPedidos(data.pedidos ?? [])
-      setSetoresDisponiveis(data.setoresDisponiveis ?? [])
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao carregar pedidos.")
-    } finally {
-      setCarregando(false)
+  const fetchPage = async ({ pageParam }: { pageParam: number | null }): Promise<PageData> => {
+    const params = new URLSearchParams()
+    params.set("limit", String(LIMIT))
+    if (pageParam !== null && pageParam !== undefined) {
+      params.set("cursor", String(pageParam))
     }
-  }, [buscaDebounced, setorFiltro, statusFiltro])
+    if (buscaDebounced) params.set("busca", buscaDebounced)
+    if (setorFiltro) params.set("setor", setorFiltro)
+    if (statusFiltro !== "TODOS") params.set("status", statusFiltro)
+    if (periodoTipo !== "TUDO") {
+      params.set("dataInicio", dataInicioFiltro)
+      params.set("dataFim", dataFimFiltro)
+    }
+
+    const res = await fetch(`/api/compras?${params.toString()}`)
+    if (!res.ok) throw new Error("Falha ao carregar pedidos")
+    const data = await res.json()
+
+    return {
+      pedidos: data.pedidos ?? [],
+      nextCursor: data.nextCursor ?? null,
+      setoresDisponiveis: data.setoresDisponiveis ?? [],
+      resumo: {
+        abertos: data.resumo?.abertos ?? 0,
+        parciais: data.resumo?.parciais ?? 0,
+        aguardandoEntrega: data.resumo?.aguardandoEntrega ?? 0,
+        orcando: data.resumo?.orcando ?? 0,
+      },
+    }
+  }
+
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ["compras", buscaDebounced, setorFiltro, statusFiltro, periodoTipo, dataInicioFiltro, dataFimFiltro],
+    queryFn: ({ pageParam }) => fetchPage({ pageParam: pageParam as number | null }),
+    initialPageParam: null as number | null,
+    getNextPageParam: (lastPage: PageData) => lastPage.nextCursor,
+    staleTime: 1000 * 60 * 5,
+    maxPages: PAGINAS_PARA_MANTER,
+  })
+
+  const todosPedidos = data?.pages?.flatMap((page) => page.pedidos) ?? []
+
+  const ultimaPagina = data?.pages?.[data.pages.length - 1]
+  const resumo = ultimaPagina?.resumo ?? {
+    abertos: 0,
+    parciais: 0,
+    aguardandoEntrega: 0,
+    orcando: 0,
+  }
+
+  const setoresDisponiveis = data?.pages?.[0]?.setoresDisponiveis ?? []
+
+  const totalItems = todosPedidos.length
+  const hasMore = hasNextPage
+
+  const virtualizer = useVirtualizer({
+    count: totalItems,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ALTURA_LINHA,
+    overscan: 10,
+    // Mede a altura real de cada linha renderizada (inclui o card
+    // expandido no hover) e reposiciona as linhas seguintes de acordo.
+    // Isso é o que corrige tanto o flicker do hover quanto a
+    // sobreposição do rodapé "Todos os pedidos carregados".
+    measureElement:
+      typeof window !== "undefined"
+        ? (element) => element.getBoundingClientRect().height
+        : undefined,
+  })
+
+  const itensVirtuais = virtualizer.getVirtualItems()
 
   useEffect(() => {
-    carregarPedidos()
-  }, [carregarPedidos])
-
-  const stats = useMemo(() => {
-    const abertos = pedidos.filter((p) => p.status === "ABERTO").length
-    const parciais = pedidos.filter((p) => p.status === "PARCIALMENTE_RECEBIDO").length
-    const todosItens = pedidos.flatMap((p) => p.itens)
-    const aguardandoEntrega = todosItens.filter((i) => i.status === "AGUARDANDO_ENTREGA").length
-    const orcando = todosItens.filter((i) => i.status === "ORCANDO").length
-    return { abertos, parciais, aguardandoEntrega, orcando }
-  }, [pedidos])
-
-  function togglePedido(id: string) {
-    setPedidosExpandidos((prev) => ({ ...prev, [id]: !prev[id] }))
-  }
+    const ultimo = itensVirtuais[itensVirtuais.length - 1]
+    if (!ultimo) return
+    if (ultimo.index >= totalItems - 20 && hasMore && !isFetchingNextPage) {
+      fetchNextPage()
+    }
+  }, [itensVirtuais, totalItems, hasMore, isFetchingNextPage, fetchNextPage])
 
   async function alterarStatusItem(pedidoId: string, itemId: string, novoStatus: StatusItem) {
     setItensSalvando((prev) => ({ ...prev, [itemId]: true }))
@@ -747,17 +948,8 @@ export default function ComprasPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Erro ao atualizar status do item")
 
-      // atualiza local sem esperar refetch completo — resposta mais rápida
-      setPedidos((prev) =>
-        prev.map((p) =>
-          p.id !== pedidoId
-            ? p
-            : { ...p, itens: p.itens.map((i) => (i.id === itemId ? { ...i, status: novoStatus } : i)) }
-        )
-      )
       setToast({ tone: "success", texto: "Status do item atualizado." })
-      // status do pedido pode ter mudado no backend (recálculo automático)
-      carregarPedidos()
+      refetch()
     } catch (err) {
       setToast({ tone: "error", texto: err instanceof Error ? err.message : "Erro ao atualizar item." })
     } finally {
@@ -776,48 +968,96 @@ export default function ComprasPage() {
             <Breadcrumb>Almoxarifado</Breadcrumb>
             <Title>Compras</Title>
             <Subtitle>
-              Pedidos de compra de materiais centralizados por solicitante, setor e função. Baixa
-              de estoque acontece só em Movimentações — aqui é o acompanhamento do processo de compra.
+              Pedidos de compra de materiais centralizados por solicitante, setor e função.
             </Subtitle>
           </div>
         </HeaderLeft>
 
         <HeaderActions>
-          <SecondaryButton
-            disabled
-            title="Exportação em Excel — em breve"
-            onClick={() => {
-              /* TODO: <ExportarComprasButton /> — etapa separada */
-            }}
-          >
-            <FileSpreadsheet size={16} />
-            Exportar
-          </SecondaryButton>
-          <PrimaryButton onClick={() => setMostrarCriarPedido(true)}>
-            <Plus size={16} />
-            Novo pedido
-          </PrimaryButton>
+          <ExportarComprasButton
+            busca={buscaDebounced}
+            setor={setorFiltro}
+            status={statusFiltro}
+            onErro={(mensagem) => setToast({ tone: "error", texto: mensagem })}
+          />
+          {podeCriar && (
+            <PrimaryButton onClick={() => setMostrarCriarPedido(true)}>
+              <Plus size={16} />
+              Novo pedido
+            </PrimaryButton>
+          )}
         </HeaderActions>
       </HeaderRow>
 
       <StatsGrid>
         <StatCard $accent={theme.colors.status.info}>
-          <StatValue>{stats.abertos}</StatValue>
+          <StatValue>{resumo.abertos}</StatValue>
           <StatLabel>Pedidos abertos</StatLabel>
         </StatCard>
         <StatCard $accent={theme.colors.status.warning}>
-          <StatValue>{stats.parciais}</StatValue>
+          <StatValue>{resumo.parciais}</StatValue>
           <StatLabel>Parcialmente recebidos</StatLabel>
         </StatCard>
         <StatCard $accent={theme.colors.status.info}>
-          <StatValue>{stats.orcando}</StatValue>
+          <StatValue>{resumo.orcando}</StatValue>
           <StatLabel>Itens orçando</StatLabel>
         </StatCard>
         <StatCard $accent={theme.colors.status.warning}>
-          <StatValue>{stats.aguardandoEntrega}</StatValue>
+          <StatValue>{resumo.aguardandoEntrega}</StatValue>
           <StatLabel>Itens aguardando entrega</StatLabel>
         </StatCard>
       </StatsGrid>
+
+      <Toolbar>
+        <Tabs>
+          <TabButton $active={periodoTipo === "HOJE"} onClick={() => selecionarPeriodo("HOJE")}>
+            Hoje
+          </TabButton>
+          <TabButton $active={periodoTipo === "SETE_DIAS"} onClick={() => selecionarPeriodo("SETE_DIAS")}>
+            7 dias
+          </TabButton>
+          <TabButton $active={periodoTipo === "MES"} onClick={() => selecionarPeriodo("MES")}>
+            30 dias
+          </TabButton>
+          <TabButton $active={periodoTipo === "TUDO"} onClick={() => selecionarPeriodo("TUDO")}>
+            Tudo
+          </TabButton>
+          <TabButton $active={periodoTipo === "PERSONALIZADO"} onClick={() => setPeriodoTipo("PERSONALIZADO")}>
+            Personalizado
+          </TabButton>
+        </Tabs>
+
+        {periodoTipo === "PERSONALIZADO" && (
+          <>
+            <input
+              type="date"
+              value={dataInicioFiltro}
+              onChange={(e) => setDataInicioFiltro(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: `1px solid ${theme.colors.surface.border}`,
+                background: theme.colors.surface.glass,
+                color: theme.colors.text.primary,
+                fontSize: "14px",
+              }}
+            />
+            <input
+              type="date"
+              value={dataFimFiltro}
+              onChange={(e) => setDataFimFiltro(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "8px",
+                border: `1px solid ${theme.colors.surface.border}`,
+                background: theme.colors.surface.glass,
+                color: theme.colors.text.primary,
+                fontSize: "14px",
+              }}
+            />
+          </>
+        )}
+      </Toolbar>
 
       <Toolbar>
         <SearchBox>
@@ -860,146 +1100,190 @@ export default function ComprasPage() {
         </FiltroSelect>
       </Toolbar>
 
-      {carregando && (
-        <ListaPedidos>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </ListaPedidos>
-      )}
+      <ListContainer ref={parentRef}>
+        {isLoading && (
+          <>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </>
+        )}
 
-      {!carregando && erro && (
-        <ErrorState>
-          <AlertTriangle size={32} />
-          <span>{erro}</span>
-          <RetryButton onClick={carregarPedidos}>
-            <RefreshCw size={14} />
-            Tentar novamente
-          </RetryButton>
-        </ErrorState>
-      )}
+        {!isLoading && isError && (
+          <ErrorState>
+            <AlertTriangle size={32} />
+            <span>{error instanceof Error ? error.message : "Erro ao carregar pedidos."}</span>
+            <RetryButton onClick={() => refetch()}>
+              <RefreshCw size={14} />
+              Tentar novamente
+            </RetryButton>
+          </ErrorState>
+        )}
 
-      {!carregando && !erro && pedidos.length === 0 && (
-        <EmptyState>
-          <Inbox size={32} />
-          <span>Nenhum pedido de compra encontrado pra esse filtro.</span>
-        </EmptyState>
-      )}
+        {!isLoading && !isError && totalItems === 0 && (
+          <EmptyState>
+            <Inbox size={32} />
+            <span>Nenhum pedido de compra encontrado para esse filtro.</span>
+          </EmptyState>
+        )}
 
-      {!carregando && !erro && pedidos.length > 0 && (
-        <ListaPedidos>
-          {pedidos.map((pedido, index) => {
-            const expandido = pedidosExpandidos[pedido.id] ?? true
-            const configPedido = STATUS_PEDIDO_CONFIG[pedido.status]
+        {!isLoading && !isError && totalItems > 0 && (
+          <>
+            <RowsSizer style={{ height: virtualizer.getTotalSize() }}>
+              {itensVirtuais.map((item) => {
+                const pedido = todosPedidos[item.index]
+                if (!pedido) return null
+                const expandido = pedidoExpandidoId === pedido.id
+                const configPedido = STATUS_PEDIDO_CONFIG[pedido.status]
 
-            return (
-              <PedidoCard key={pedido.id} $index={index}>
-                <PedidoTopo onClick={() => togglePedido(pedido.id)}>
-                  <PedidoInfo>
-                    <PedidoNumero>Pedido #{pedido.numero}</PedidoNumero>
-                    <SolicitanteLinha>
-                      <SolicitanteDado>
-                        <UserRound size={13} />
-                        <strong>{pedido.solicitanteNome}</strong>
-                      </SolicitanteDado>
-                      <SolicitanteDado>
-                        <Building2 size={13} />
-                        {pedido.solicitanteSetor}
-                      </SolicitanteDado>
-                      <SolicitanteDado>
-                        <Briefcase size={13} />
-                        {pedido.solicitanteFuncao}
-                      </SolicitanteDado>
-                      <SolicitanteDado>
-                        <CalendarClock size={13} />
-                        {formatarData(pedido.createdAt)}
-                      </SolicitanteDado>
-                    </SolicitanteLinha>
-                  </PedidoInfo>
-
-                  <PedidoAcoes>
-                    <StatusBadge $cor={corDoStatus(configPedido.cor)}>{configPedido.label}</StatusBadge>
-                    <ChevronButton
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        togglePedido(pedido.id)
-                      }}
+                return (
+                  <div
+                    key={item.key}
+                    data-index={item.index}
+                    ref={virtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${item.start}px)`,
+                      padding: `0 ${theme.spacing[1]}`,
+                    }}
+                  >
+                    <PedidoCardWrapper
+                      onMouseEnter={() => handleMouseEnter(pedido.id)}
+                      onMouseLeave={handleMouseLeave}
                     >
-                      {expandido ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                    </ChevronButton>
-                  </PedidoAcoes>
-                </PedidoTopo>
+                      <PedidoTopo>
+                        <PedidoInfo>
+                          <PedidoNumero>#{pedido.numero}</PedidoNumero>
+                          <SolicitanteNome>{pedido.solicitanteNome}</SolicitanteNome>
+                          <SolicitanteSetor>{pedido.solicitanteSetor}</SolicitanteSetor>
+                          <span style={{ fontSize: "11px", color: theme.colors.text.muted }}>
+                            {formatarData(pedido.createdAt)}
+                          </span>
+                        </PedidoInfo>
 
-                {expandido && (
-                  <ItensLista>
-                    {pedido.itens.map((item) => {
-                      const configItem = STATUS_ITEM_CONFIG[item.status]
-                      const nomeExibido = item.material?.nome ?? item.nomeMaterialNovo ?? "—"
-                      const salvandoEsteItem = itensSalvando[item.id]
+                        <PedidoAcoes>
+                          <StatusBadge $cor={corDoStatus(configPedido.cor)}>
+                            {configPedido.label}
+                          </StatusBadge>
+                          <ExpandIcon size={18} $expandido={expandido} />
+                        </PedidoAcoes>
+                      </PedidoTopo>
 
-                      return (
-                        <ItemRow key={item.id}>
-                          <ItemNome>
-                            <ItemNomeTexto title={nomeExibido}>{nomeExibido}</ItemNomeTexto>
-                            {item.tipo === "MATERIAL_NOVO" && <ItemTag>Sem cadastro</ItemTag>}
-                          </ItemNome>
+                      {expandido && (
+                        <ItensContainer>
+                          {pedido.itens.map((itemPedido) => {
+                            const configItem = STATUS_ITEM_CONFIG[itemPedido.status]
+                            const nomeExibido = itemPedido.material?.nome ?? itemPedido.nomeMaterialNovo ?? "—"
+                            const salvandoEsteItem = itensSalvando[itemPedido.id]
+                            const itemExpandido = itensExpandidos[itemPedido.id] ?? false
 
-                          <ItemQuantidade>
-                            {item.quantidade} {item.unidadeSugerida ?? ""}
-                          </ItemQuantidade>
+                            const descricao = itemPedido.material?.descricao ?? itemPedido.descricaoNovo
+                            const unidade = itemPedido.material?.unidadeMedida?.sigla ?? itemPedido.unidadeSugerida
+                            const marca = itemPedido.material?.marca ?? itemPedido.marcaNovo
+                            const fabricante = itemPedido.material?.fabricante ?? itemPedido.fabricanteNovo
+                            const modelo = itemPedido.material?.modelo ?? itemPedido.modeloNovo
+                            const fornecedor = itemPedido.material?.fornecedor ?? itemPedido.fornecedorNovo
 
-                          <ItemStatusSelect
-                            value={item.status}
-                            disabled={salvandoEsteItem || item.status === "RECEBIDO"}
-                            $cor={corDoStatus(configItem.cor)}
-                            onChange={(e) =>
-                              alterarStatusItem(pedido.id, item.id, e.target.value as StatusItem)
-                            }
-                          >
-                            {STATUS_ITEM_EDITAVEIS.map((status) => (
-                              <option key={status} value={status}>
-                                {STATUS_ITEM_CONFIG[status].label}
-                              </option>
-                            ))}
-                            {item.status === "RECEBIDO" && (
-                              <option value="RECEBIDO">Recebido (via Movimentação)</option>
-                            )}
-                          </ItemStatusSelect>
+                            return (
+                              <div key={itemPedido.id}>
+                                <ItemRow onClick={() => toggleItem(itemPedido.id)}>
+                                  <ItemNome>
+                                    <ItemNomeTexto title={nomeExibido}>{nomeExibido}</ItemNomeTexto>
+                                    {itemPedido.tipo === "MATERIAL_NOVO" && <ItemTag>Sem cadastro</ItemTag>}
+                                  </ItemNome>
 
-                          <ItemDataPrevista>
-                            <CalendarClock size={12} />
-                            {item.prazoMaximoNecessario
-                              ? `Necessário até: ${formatarData(item.prazoMaximoNecessario)}`
-                              : "Sem prazo definido"}
-                          </ItemDataPrevista>
+                                  <ItemQuantidade>
+                                    {itemPedido.quantidade} {unidade ?? ""}
+                                  </ItemQuantidade>
 
-                          <ItemObservacao title={item.observacao ?? undefined}>
-                            {item.observacao ?? ""}
-                          </ItemObservacao>
-                        </ItemRow>
-                      )
-                    })}
+                                  <ItemStatusSelect
+                                    value={itemPedido.status}
+                                    disabled={salvandoEsteItem || itemPedido.status === "RECEBIDO"}
+                                    $cor={corDoStatus(configItem.cor)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) =>
+                                      alterarStatusItem(pedido.id, itemPedido.id, e.target.value as StatusItem)
+                                    }
+                                  >
+                                    {STATUS_ITEM_EDITAVEIS.map((status) => (
+                                      <option key={status} value={status}>
+                                        {STATUS_ITEM_CONFIG[status].label}
+                                      </option>
+                                    ))}
+                                    {itemPedido.status === "RECEBIDO" && (
+                                      <option value="RECEBIDO">Recebido (via Movimentação)</option>
+                                    )}
+                                  </ItemStatusSelect>
 
-                    {pedido.status !== "CANCELADO" && pedido.status !== "CONCLUIDO" && (
-                      <AdicionarItemButton onClick={() => setPedidoParaAdicionarItem(pedido.id)}>
-                        <Plus size={13} />
-                        Adicionar item a este pedido
-                      </AdicionarItemButton>
-                    )}
-                  </ItensLista>
-                )}
-              </PedidoCard>
-            )
-          })}
-        </ListaPedidos>
-      )}
+                                  <ItemDataPrevista>
+                                    <CalendarClock size={12} />
+                                    {itemPedido.prazoMaximoNecessario
+                                      ? `Necessário até: ${formatarData(itemPedido.prazoMaximoNecessario)}`
+                                      : "Sem prazo definido"}
+                                  </ItemDataPrevista>
+
+                                  <ItemObservacao title={itemPedido.observacao ?? undefined}>
+                                    {itemPedido.observacao ?? ""}
+                                  </ItemObservacao>
+                                </ItemRow>
+
+                                {itemExpandido && (
+                                  <ItemDetalhesExpandido>
+                                    <div><strong>Descrição:</strong> {descricao || "—"}</div>
+                                    <div><strong>Marca:</strong> {marca || "—"}</div>
+                                    <div><strong>Fabricante:</strong> {fabricante || "—"}</div>
+                                    <div><strong>Modelo:</strong> {modelo || "—"}</div>
+                                    <div><strong>Fornecedor:</strong> {fornecedor || "—"}</div>
+                                    {itemPedido.material?.codigoInterno && (
+                                      <div><strong>Código interno:</strong> {itemPedido.material.codigoInterno}</div>
+                                    )}
+                                  </ItemDetalhesExpandido>
+                                )}
+                              </div>
+                            )
+                          })}
+
+                          {pedido.status !== "CANCELADO" && pedido.status !== "CONCLUIDO" && (
+                            <AdicionarItemButton onClick={() => setPedidoParaAdicionarItem(pedido.id)}>
+                              <Plus size={13} />
+                              Adicionar item a este pedido
+                            </AdicionarItemButton>
+                          )}
+                        </ItensContainer>
+                      )}
+                    </PedidoCardWrapper>
+                  </div>
+                )
+              })}
+            </RowsSizer>
+
+            {/* "Todos os pedidos carregados" - fora do RowsSizer.
+                Agora que RowsSizer usa a altura MEDIDA (measureElement),
+                getTotalSize() já contabiliza qualquer card expandido,
+                então este rodapé nunca mais fica por baixo/sobreposto. */}
+            {!hasNextPage && !isFetchingNextPage && !isError && totalItems > 0 && (
+              <FimLista>✓ Todos os pedidos carregados ({totalItems})</FimLista>
+            )}
+          </>
+        )}
+
+        {isFetchingNextPage && (
+          <CarregandoMais>
+            <RefreshCw size={14} className="spin" />
+            Carregando mais pedidos...
+          </CarregandoMais>
+        )}
+      </ListContainer>
 
       {mostrarCriarPedido && (
         <CriarPedidoModal
           onClose={() => setMostrarCriarPedido(false)}
           onCriado={() => {
             setMostrarCriarPedido(false)
-            carregarPedidos()
+            refetch()
           }}
         />
       )}
@@ -1007,11 +1291,11 @@ export default function ComprasPage() {
       {pedidoParaAdicionarItem && (
         <AdicionarItemModal
           pedidoId={pedidoParaAdicionarItem}
-          numeroPedido={pedidos.find((p) => p.id === pedidoParaAdicionarItem)?.numero ?? 0}
+          numeroPedido={todosPedidos.find((p) => p.id === pedidoParaAdicionarItem)?.numero ?? 0}
           onClose={() => setPedidoParaAdicionarItem(null)}
           onAdicionado={() => {
             setPedidoParaAdicionarItem(null)
-            carregarPedidos()
+            refetch()
           }}
         />
       )}

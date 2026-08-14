@@ -1,7 +1,22 @@
+// src/app/api/compras/[id]/itens/[itemId]/route.ts
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/require-role"
+import { Prisma } from "@prisma/client"
+
+// Select do material para consistência
+const MATERIAL_SELECT = {
+  id: true,
+  nome: true,
+  codigoInterno: true,
+  descricao: true,
+  marca: true,
+  fabricante: true,
+  modelo: true,
+  fornecedor: true,
+  unidadeMedida: { select: { sigla: true } },
+} satisfies Prisma.MaterialSelect
 
 const atualizarItemSchema = z.object({
   status: z.enum(["EM_ESPERA", "ORCANDO", "APROVADO", "AGUARDANDO_ENTREGA", "CANCELADO"]).optional(),
@@ -30,25 +45,44 @@ export async function PATCH(
     )
   }
 
-  const itemExistente = await prisma.itemPedidoCompra.findFirst({ where: { id: itemId, pedidoId: id } })
+  const itemExistente = await prisma.itemPedidoCompra.findFirst({ 
+    where: { id: itemId, pedidoId: id } 
+  })
   if (!itemExistente) {
     return NextResponse.json({ error: "Item não encontrado neste pedido" }, { status: 404 })
   }
 
   const dados = parsed.data
+  
+  // Prepara os dados para atualização
+  const updateData: any = {}
+  
+  if (dados.status !== undefined) {
+    updateData.status = dados.status
+  }
+  
+  if (dados.prazoMaximoNecessario !== undefined) {
+    updateData.prazoMaximoNecessario = dados.prazoMaximoNecessario 
+      ? new Date(dados.prazoMaximoNecessario) 
+      : null
+  }
+  
+  if (dados.observacao !== undefined) {
+    updateData.observacao = dados.observacao || null
+  }
+  
+  if (dados.quantidade !== undefined) {
+    updateData.quantidade = dados.quantidade
+  }
+
   const item = await prisma.itemPedidoCompra.update({
     where: { id: itemId },
-    data: {
-      status: dados.status,
-      prazoMaximoNecessario:
-        dados.prazoMaximoNecessario === undefined
-          ? undefined
-          : dados.prazoMaximoNecessario
-          ? new Date(dados.prazoMaximoNecessario)
-          : null,
-      observacao: dados.observacao === undefined ? undefined : dados.observacao || null,
-      quantidade: dados.quantidade,
-    },
+    data: updateData,
+    include: {
+      material: {
+        select: MATERIAL_SELECT
+      }
+    }
   })
 
   // recalcula status do pedido a partir dos itens (fica sempre coerente,
@@ -56,23 +90,40 @@ export async function PATCH(
   await recalcularStatusPedido(id)
 
   return NextResponse.json({
-    item: { ...item, quantidade: Number(item.quantidade), quantidadeRecebida: Number(item.quantidadeRecebida) },
+    item: { 
+      ...item, 
+      quantidade: Number(item.quantidade), 
+      quantidadeRecebida: Number(item.quantidadeRecebida) 
+    },
   })
 }
 
 async function recalcularStatusPedido(pedidoId: string) {
-  const itens = await prisma.itemPedidoCompra.findMany({ where: { pedidoId } })
+  const itens = await prisma.itemPedidoCompra.findMany({ 
+    where: { pedidoId } 
+  })
+  
   const naoCancelados = itens.filter((i) => i.status !== "CANCELADO")
 
   if (naoCancelados.length === 0) {
-    await prisma.pedidoCompra.update({ where: { id: pedidoId }, data: { status: "CANCELADO" } })
+    await prisma.pedidoCompra.update({ 
+      where: { id: pedidoId }, 
+      data: { status: "CANCELADO" } 
+    })
     return
   }
 
   const todosRecebidos = naoCancelados.every((i) => i.status === "RECEBIDO")
   const algumRecebido = naoCancelados.some((i) => i.status === "RECEBIDO")
 
-  const novoStatus = todosRecebidos ? "CONCLUIDO" : algumRecebido ? "PARCIALMENTE_RECEBIDO" : "ABERTO"
+  const novoStatus = todosRecebidos 
+    ? "CONCLUIDO" 
+    : algumRecebido 
+    ? "PARCIALMENTE_RECEBIDO" 
+    : "ABERTO"
 
-  await prisma.pedidoCompra.update({ where: { id: pedidoId }, data: { status: novoStatus } })
+  await prisma.pedidoCompra.update({ 
+    where: { id: pedidoId }, 
+    data: { status: novoStatus } 
+  })
 }

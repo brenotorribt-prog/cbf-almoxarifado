@@ -1,18 +1,23 @@
+// src/auth.ts
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import bcrypt from "bcryptjs"
 import { z } from "zod"
 import { authConfig } from "./auth.config"
 import { prisma } from "@/lib/prisma"
+import { Role } from "@prisma/client"
 
 const credentialsSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 })
 
+// Para NextAuth v5, os tipos são diferentes
+// Não use declare module para next-auth/jwt
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
-  session: { strategy: "jwt" },
+  debug: true,
   providers: [
     Credentials({
       credentials: {
@@ -25,18 +30,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const { email, password } = parsed.data
 
-        const user = await prisma.user.findUnique({ where: { email } })
-        if (!user || !user.password || !user.ativo) return null
+        try {
+          const user = await prisma.user.findUnique({ where: { email } })
+          
+          if (!user || !user.password || !user.ativo) {
+            console.log("Usuário não encontrado, sem senha ou inativo:", email)
+            return null
+          }
 
-        const senhaValida = await bcrypt.compare(password, user.password)
-        if (!senhaValida) return null
+          const senhaValida = await bcrypt.compare(password, user.password)
+          if (!senhaValida) {
+            console.log("Senha inválida para:", email)
+            return null
+          }
 
-        return {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          image: user.image,
+          console.log("Login bem-sucedido para:", email)
+
+          // Para NextAuth v5, retorne o objeto diretamente
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role as Role,
+            image: user.image,
+          }
+        } catch (error) {
+          console.error("Erro na autenticação:", error)
+          return null
         }
       },
     }),
@@ -44,14 +64,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     ...authConfig.callbacks,
     async jwt({ token, user, trigger, session }) {
-      // Primeiro login - adiciona dados do usuário
       if (user) {
         token.id = user.id
-        token.role = user.role
+        token.role = user.role as Role
       }
       
-      // Atualização manual via client - disparado pelo modal de perfil
-      // Quando o client chama useSession().update({ name, image })
       if (trigger === "update" && session) {
         if (typeof session.name === "string") {
           token.name = session.name
@@ -66,9 +83,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string
-        session.user.role = token.role as never
-        // O nome e imagem já são atualizados automaticamente do token
-        // para session.user.name e session.user.image
+        session.user.role = token.role as Role
       }
       return session
     },

@@ -34,6 +34,7 @@ import {
   Briefcase,
   CalendarClock,
 } from "lucide-react"
+import { downloadPDF } from "@/lib/pdf-helper"
 
 // =====================================================================
 // TIPOS
@@ -62,7 +63,7 @@ interface EmprestimoCriado {
 
 interface NovoEmprestimoModalProps {
   onClose: () => void
-  onSalvo: () => void
+  onSalvo: (emprestimoId?: string) => void
 }
 
 // =====================================================================
@@ -728,6 +729,11 @@ export default function NovoEmprestimoModal({ onClose, onSalvo }: NovoEmprestimo
       if (!res.ok) throw new Error(dados.error ?? "Erro ao registrar empréstimo.")
 
       setResultado(dados.emprestimos)
+      
+      // Passa o ID do primeiro empréstimo criado para o callback
+      if (dados.emprestimos && dados.emprestimos.length > 0) {
+        onSalvo(dados.emprestimos[0].id)
+      }
     } catch (err) {
       setErroGeral(err instanceof Error ? err.message : "Erro ao registrar empréstimo.")
     } finally {
@@ -736,7 +742,7 @@ export default function NovoEmprestimoModal({ onClose, onSalvo }: NovoEmprestimo
   }
 
   function finalizar() {
-    onSalvo()
+    onSalvo(resultado?.[0]?.id)
   }
 
   const bloqueado = salvando

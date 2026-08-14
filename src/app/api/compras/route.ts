@@ -1,10 +1,24 @@
+// src/app/api/compras/route.ts
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireAuth, requireRole } from "@/lib/require-role"
 import { Prisma } from "@prisma/client"
 
-// GET /api/compras?setor=Manutenção&status=ABERTO&busca=fio
+// Select do material para consistência em toda a aplicação
+const MATERIAL_SELECT = {
+  id: true,
+  nome: true,
+  codigoInterno: true,
+  descricao: true,
+  marca: true,
+  fabricante: true,
+  modelo: true,
+  fornecedor: true,
+  unidadeMedida: { select: { sigla: true } },
+} satisfies Prisma.MaterialSelect
+
+// GET /api/compras?setor=Manutenção&status=ABERTO&busca=fio&dataInicio=2024-01-01&dataFim=2024-01-31
 export async function GET(request: NextRequest) {
   const guard = await requireAuth()
   if (guard instanceof NextResponse) return guard
@@ -13,10 +27,21 @@ export async function GET(request: NextRequest) {
   const setor = searchParams.get("setor")?.trim()
   const status = searchParams.get("status") // ABERTO | PARCIALMENTE_RECEBIDO | CONCLUIDO | CANCELADO
   const busca = searchParams.get("busca")?.trim()
+  const dataInicioParam = searchParams.get("dataInicio")
+  const dataFimParam = searchParams.get("dataFim")
 
   const where: Prisma.PedidoCompraWhereInput = {}
   if (setor) where.solicitanteSetor = { equals: setor, mode: "insensitive" }
   if (status) where.status = status as Prisma.EnumStatusPedidoCompraFilter["equals"]
+  
+  // Filtro de período (opcional)
+  if (dataInicioParam || dataFimParam) {
+    where.createdAt = {
+      ...(dataInicioParam ? { gte: new Date(`${dataInicioParam}T00:00:00.000`) } : {}),
+      ...(dataFimParam ? { lte: new Date(`${dataFimParam}T23:59:59.999`) } : {}),
+    }
+  }
+  
   if (busca) {
     where.OR = [
       { solicitanteNome: { contains: busca, mode: "insensitive" } },
@@ -32,14 +57,7 @@ export async function GET(request: NextRequest) {
       itens: {
         include: { 
           material: { 
-            select: { 
-              id: true, 
-              nome: true, 
-              marca: true, 
-              fabricante: true, 
-              modelo: true, 
-              fornecedor: true 
-            } 
+            select: MATERIAL_SELECT
           } 
         },
         orderBy: { createdAt: "asc" },
@@ -134,14 +152,7 @@ export async function POST(request: NextRequest) {
       itens: { 
         include: { 
           material: { 
-            select: { 
-              id: true, 
-              nome: true, 
-              marca: true, 
-              fabricante: true, 
-              modelo: true, 
-              fornecedor: true 
-            } 
+            select: MATERIAL_SELECT
           } 
         } 
       },
@@ -180,14 +191,7 @@ type PedidoComRelacoes = Prisma.PedidoCompraGetPayload<{
     itens: { 
       include: { 
         material: { 
-          select: { 
-            id: true
-            nome: true
-            marca: true
-            fabricante: true
-            modelo: true
-            fornecedor: true
-          } 
+          select: typeof MATERIAL_SELECT
         } 
       } 
     }
