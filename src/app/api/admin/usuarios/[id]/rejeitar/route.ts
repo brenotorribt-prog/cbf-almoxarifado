@@ -13,7 +13,7 @@ export async function POST(
 ) {
   const guard = await requireAdmin()
   if (guard instanceof NextResponse) return guard
-  const session = guard
+  const usuarioAdmin = guard // <-- MUDOU AQUI: session → usuarioAdmin
 
   const { id } = await params
 
@@ -57,7 +57,7 @@ export async function POST(
       status: "REJEITADO",
       ativo: false,
       motivoRejeicao: parsed.data.motivo,
-      aprovadoPorId: session.user.id,
+      aprovadoPorId: usuarioAdmin.id, // <-- MUDOU AQUI: session.user.id → usuarioAdmin.id
       dataAprovacao: new Date(),
     },
     select: {
@@ -77,7 +77,7 @@ export async function POST(
       statusAnterior: usuario.status,
       statusNovo: "REJEITADO",
       observacao: parsed.data.motivo,
-      usuarioId: session.user.id,
+      usuarioId: usuarioAdmin.id, // <-- MUDOU AQUI: session.user.id → usuarioAdmin.id
     },
   })
 

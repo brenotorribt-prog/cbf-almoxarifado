@@ -16,7 +16,7 @@ export async function POST(
 ) {
   const guard = await requireAdmin()
   if (guard instanceof NextResponse) return guard
-  const session = guard
+  const usuarioAdmin = guard // <-- MUDOU AQUI: session → usuarioAdmin
 
   const { id } = await params
 
@@ -51,7 +51,7 @@ export async function POST(
       status: "APROVADO",
       ativo: true,
       role: parsed.data.role ?? usuario.role,
-      aprovadoPorId: session.user.id,
+      aprovadoPorId: usuarioAdmin.id, // <-- MUDOU AQUI: session.user.id → usuarioAdmin.id
       dataAprovacao: new Date(),
       motivoRejeicao: null, // limpa caso tenha sido rejeitado antes e reconsiderado
     },
@@ -76,7 +76,7 @@ export async function POST(
       observacao: parsed.data.role && parsed.data.role !== usuario.role
         ? `Aprovado com role alterada de ${usuario.role} para ${parsed.data.role}`
         : "Acesso aprovado",
-      usuarioId: session.user.id,
+      usuarioId: usuarioAdmin.id, // <-- MUDOU AQUI: session.user.id → usuarioAdmin.id
     },
   })
 
