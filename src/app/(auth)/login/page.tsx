@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useId } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { signIn } from "next-auth/react"
+import { createClient } from "@/lib/client"
 import Image from "next/image"
 import dynamic from "next/dynamic"
 import styled, { css, keyframes } from "styled-components"
@@ -95,21 +95,30 @@ function LoginComponent() {
     setError(null)
     setLoading(true)
 
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    })
+    const supabase = createClient()
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
 
-    setLoading(false)
-
-    if (result?.error) {
+    if (signInError) {
       setError("E-mail ou senha inválidos.")
       setShaking(true)
       setTimeout(() => setShaking(false), 500)
+      setLoading(false)
       return
     }
 
+    // Replica a checagem de ativo/status que existia dentro do authorize() antigo
+    const resAcesso = await fetch("/api/auth/verificar-acesso")
+    if (!resAcesso.ok) {
+      const dados = await resAcesso.json().catch(() => ({}))
+      await supabase.auth.signOut()
+      setError(dados.error ?? "Acesso não autorizado.")
+      setShaking(true)
+      setTimeout(() => setShaking(false), 500)
+      setLoading(false)
+      return
+    }
+
+    setLoading(false)
     router.push(callbackUrl)
     router.refresh()
   }

@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react"
 import styled from "styled-components"
-import { SessionProvider } from "next-auth/react"
 import Sidebar from "./SideBar"
 import { SidebarProvider, useSidebar } from "./Sidebarcontext"
 
@@ -29,14 +28,12 @@ const Content = styled.main<{ $collapsed: boolean }>`
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <SessionProvider>
-      <SidebarProvider>
-        <Shell>
-          <Sidebar />
-          <ContentInner>{children}</ContentInner>
-        </Shell>
-      </SidebarProvider>
-    </SessionProvider>
+    <SidebarProvider>
+      <Shell>
+        <Sidebar />
+        <ContentInner>{children}</ContentInner>
+      </Shell>
+    </SidebarProvider>
   )
 }
 

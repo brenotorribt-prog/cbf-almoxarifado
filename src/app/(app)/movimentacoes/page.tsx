@@ -12,12 +12,12 @@
  * os modais entram na próxima etapa.
  */
 
-import { useState, useRef, useMemo } from "react"
-import { useSession } from "next-auth/react"
+import { useState, useRef, useMemo, useEffect } from "react"
 import styled, { keyframes } from "styled-components"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
 import { theme, hexToRgba } from "@/styles/theme"
+import { createClient } from "@/lib/client"
 import {
   ArrowLeftRight,
   Plus,
@@ -190,11 +190,35 @@ const ALTURA_CABECALHO = 44
 const LIMIT = 60
 
 export default function MovimentacoesPage() {
-  const { data: sessao } = useSession()
-  const role = (sessao?.user as { role?: string } | undefined)?.role ?? ""
-  const podeAprovar = PAPEIS_APROVADORES.has(role)
-
+  const [role, setRole] = useState("")
+  const [isLoadingUser, setIsLoadingUser] = useState(true)
   const queryClient = useQueryClient()
+
+  // Buscar role do usuário com Supabase
+  useEffect(() => {
+    async function getUserRole() {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          const res = await fetch("/api/perfil")
+          if (res.ok) {
+            const data = await res.json()
+            setRole(data.usuario?.role || "")
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao buscar perfil:", error)
+      } finally {
+        setIsLoadingUser(false)
+      }
+    }
+    
+    getUserRole()
+  }, [])
+
+  const podeAprovar = PAPEIS_APROVADORES.has(role)
 
   const [abaAtiva, setAbaAtiva] = useState<AbaAtiva>("historico")
 
@@ -366,6 +390,24 @@ export default function MovimentacoesPage() {
   }
 
   const totalPendentesParaBadge = resumoEmprestimos.pendentesAprovacao
+
+  // Se estiver carregando o usuário, mostrar loading
+  if (isLoadingUser) {
+    return (
+      <PageWrapper>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          minHeight: '400px',
+          color: theme.colors.text.muted
+        }}>
+          <Loader2 size={24} style={{ animation: 'spin 0.7s linear infinite' }} />
+          <span style={{ marginLeft: '12px' }}>Carregando...</span>
+        </div>
+      </PageWrapper>
+    )
+  }
 
   return (
     <PageWrapper>

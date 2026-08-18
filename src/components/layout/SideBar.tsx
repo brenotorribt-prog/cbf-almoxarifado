@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { useSession, signOut } from "next-auth/react"
+import { usePathname, useRouter } from "next/navigation"
+import { createClient } from "@/lib/client"
 import styled, { css, keyframes, useTheme } from "styled-components"
 import { motion, LayoutGroup } from "framer-motion"
 import {
@@ -22,7 +22,7 @@ import {
 } from "lucide-react"
 import { hexToRgba } from "@/styles/theme"
 import { useSidebar } from "./Sidebarcontext"
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import ModalPerfil from "@/components/modalperfil"
 
 interface NavItem {
@@ -69,18 +69,43 @@ function getInitials(name: string) {
   return (first + last).toUpperCase()
 }
 
+// Perfil vindo de /api/perfil (Prisma) — Supabase só cuida de autenticação,
+// não sabe nada sobre nome/role/avatar do negócio.
+interface PerfilSidebar {
+  nome: string
+  sobrenome: string
+  role: string
+  image: string | null
+}
+
 export default function Sidebar({
   user = { name: "Usuário Convidado", role: "Almoxarife" },
   onLogout,
 }: SidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
   const { collapsed, toggleCollapsed, mobileOpen, openMobile, closeMobile } = useSidebar()
   const theme = useTheme()
-  const { data: sessao } = useSession()
+  const [perfil, setPerfil] = useState<PerfilSidebar | null>(null)
   const [perfilAberto, setPerfilAberto] = useState(false)
-  
+
   const [travellingIndex, setTravellingIndex] = useState<number | null>(null)
   const previousIndex = useRef(0)
+
+  const carregarPerfil = useCallback(async () => {
+    try {
+      const res = await fetch("/api/perfil")
+      if (!res.ok) return
+      const data = await res.json()
+      setPerfil(data.usuario)
+    } catch {
+      // Falha silenciosa aqui: o Sidebar cai no fallback `user` abaixo.
+    }
+  }, [])
+
+  useEffect(() => {
+    carregarPerfil()
+  }, [carregarPerfil])
 
   const isActive = (href: string) =>
     pathname === href || pathname?.startsWith(`${href}/`)
@@ -89,12 +114,12 @@ export default function Sidebar({
     isActive(item.href)
   )
 
-  // Usuário exibido: prioriza a sessão real, cai no prop `user` só como fallback
-  // enquanto a sessão carrega (evita "flash" de usuário genérico)
+  // Usuário exibido: prioriza o perfil real (Prisma), cai no prop `user` só
+  // como fallback enquanto o perfil carrega (evita "flash" de usuário genérico)
   const usuarioExibido: SidebarUser = {
-    name: sessao?.user?.name ?? user.name,
-    role: sessao?.user?.role ? ROLE_LABELS[sessao.user.role as string] ?? sessao.user.role as string : user.role,
-    avatarUrl: sessao?.user?.image ?? user.avatarUrl,
+    name: perfil ? `${perfil.nome} ${perfil.sobrenome}`.trim() : user.name,
+    role: perfil?.role ? ROLE_LABELS[perfil.role] ?? perfil.role : user.role,
+    avatarUrl: perfil?.image ?? user.avatarUrl,
   }
 
   useEffect(() => {
@@ -137,7 +162,10 @@ export default function Sidebar({
       onLogout()
       return
     }
-    await signOut({ callbackUrl: "/login" })
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push("/login")
+    router.refresh()
   }
 
   return (
@@ -330,7 +358,12 @@ export default function Sidebar({
         </BottomSection>
       </Aside>
 
-      {perfilAberto && <ModalPerfil onClose={() => setPerfilAberto(false)} />}
+      {perfilAberto && (
+        <ModalPerfil
+          onClose={() => setPerfilAberto(false)}
+          onProfileUpdated={carregarPerfil}
+        />
+      )}
     </>
   )
 }

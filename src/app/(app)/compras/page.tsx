@@ -24,11 +24,11 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useSession } from "next-auth/react"
 import styled, { keyframes } from "styled-components"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useInfiniteQuery } from "@tanstack/react-query"
 import { theme, hexToRgba } from "@/styles/theme"
+import { createClient } from "@/lib/client"
 import {
   ShoppingCart,
   Plus,
@@ -768,10 +768,34 @@ const Toast = styled.div<{ $tone: "success" | "error" }>`
 // =====================================================================
 
 export default function ComprasPage() {
-  const { data: sessao } = useSession()
-  const podeCriar = !PAPEIS_SEM_CRIAR.has(
-    (sessao?.user as { role?: string } | undefined)?.role ?? ""
-  )
+  const [role, setRole] = useState("")
+  const [isLoadingUser, setIsLoadingUser] = useState(true)
+
+  // Buscar role do usuário com Supabase
+  useEffect(() => {
+    async function getUserRole() {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          const res = await fetch("/api/perfil")
+          if (res.ok) {
+            const data = await res.json()
+            setRole(data.usuario?.role || "")
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao buscar perfil:", error)
+      } finally {
+        setIsLoadingUser(false)
+      }
+    }
+    
+    getUserRole()
+  }, [])
+
+  const podeCriar = !PAPEIS_SEM_CRIAR.has(role)
 
   const [busca, setBusca] = useState("")
   const [buscaDebounced, setBuscaDebounced] = useState("")
@@ -955,6 +979,24 @@ export default function ComprasPage() {
     } finally {
       setItensSalvando((prev) => ({ ...prev, [itemId]: false }))
     }
+  }
+
+  // Se estiver carregando o usuário, mostrar loading
+  if (isLoadingUser) {
+    return (
+      <PageWrapper>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          minHeight: '400px',
+          color: theme.colors.text.muted
+        }}>
+          <RefreshCw size={24} style={{ animation: 'spin 0.7s linear infinite' }} />
+          <span style={{ marginLeft: '12px' }}>Carregando...</span>
+        </div>
+      </PageWrapper>
+    )
   }
 
   return (

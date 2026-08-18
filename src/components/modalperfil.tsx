@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 import styled, { keyframes } from "styled-components"
 import { theme, hexToRgba } from "@/styles/theme"
 import {
@@ -92,6 +92,12 @@ interface PerfilUsuario {
 
 interface ModalPerfilProps {
   onClose: () => void
+  /**
+   * Chamado após salvar o perfil com sucesso. Usado pelo Sidebar pra
+   * recarregar nome/avatar/role exibidos (Supabase não guarda esses dados
+   * de negócio — quem sabe é o Prisma, via /api/perfil).
+   */
+  onProfileUpdated?: () => void
 }
 
 // =====================================================================
@@ -419,7 +425,7 @@ const ActionButton = styled.button<{ $variant: "primary" | "ghost" }>`
 // =====================================================================
 
 export default function ModalPerfil({ onClose }: ModalPerfilProps) {
-  const { update: atualizarSessao } = useSession()
+  const router = useRouter()
 
   const [perfil, setPerfil] = useState<PerfilUsuario | null>(null)
   const [carregando, setCarregando] = useState(true)
@@ -589,11 +595,8 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
         senhaAlterada = true
       }
 
-      // Atualiza a sessão do NextAuth
-      await atualizarSessao({
-        name: dadosPerfil.usuario.name,
-        image: dadosPerfil.usuario.image,
-      })
+      // Server Components releem os dados atualizados do Prisma direto
+      router.refresh()
 
       setSenhaAtual("")
       setNovaSenha("")

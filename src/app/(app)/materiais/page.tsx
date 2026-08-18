@@ -38,11 +38,11 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useSession } from "next-auth/react"
 import styled, { keyframes } from "styled-components"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useInfiniteQuery } from "@tanstack/react-query"
 import { theme, hexToRgba } from "@/styles/theme"
+import { createClient } from "@/lib/client"
 import {
   Search,
   Plus,
@@ -163,10 +163,34 @@ const LIMIT = 80 // Aumentado de 40 para 80
 const PAGINAS_PARA_MANTER = 3 // Mantém últimas 3 páginas na memória
 
 export default function MateriaisPage() {
-  const { data: sessao } = useSession()
-  const podeCadastrar = !PAPEIS_SEM_CADASTRO.has(
-    (sessao?.user as { role?: string } | undefined)?.role ?? ""
-  )
+  const [role, setRole] = useState("")
+  const [isLoadingUser, setIsLoadingUser] = useState(true)
+
+  // Buscar role do usuário com Supabase
+  useEffect(() => {
+    async function getUserRole() {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          const res = await fetch("/api/perfil")
+          if (res.ok) {
+            const data = await res.json()
+            setRole(data.usuario?.role || "")
+          }
+        }
+      } catch (error) {
+        console.error("Erro ao buscar perfil:", error)
+      } finally {
+        setIsLoadingUser(false)
+      }
+    }
+    
+    getUserRole()
+  }, [])
+
+  const podeCadastrar = !PAPEIS_SEM_CADASTRO.has(role)
 
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [busca, setBusca] = useState("")
@@ -310,6 +334,24 @@ export default function MateriaisPage() {
       campo,
       direcao: prev.campo === campo && prev.direcao === "asc" ? "desc" : "asc",
     }))
+  }
+
+  // Se estiver carregando o usuário, mostrar loading
+  if (isLoadingUser) {
+    return (
+      <PageWrapper>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          minHeight: '400px',
+          color: theme.colors.text.muted
+        }}>
+          <Loader2 size={24} style={{ animation: 'spin 0.7s linear infinite' }} />
+          <span style={{ marginLeft: '12px' }}>Carregando...</span>
+        </div>
+      </PageWrapper>
+    )
   }
 
   return (
@@ -486,15 +528,15 @@ export default function MateriaisPage() {
 
                     <RowInfo>
                       <RowNomeLinha>
-  <RowNome>{material.nome}</RowNome>
-  {material.requerAprovacao && (
-    <ShieldAlert 
-      size={12} 
-      color={theme.colors.status.warning} 
-      aria-label="Requer aprovação para sair" 
-    />
-  )}
-</RowNomeLinha>
+                        <RowNome>{material.nome}</RowNome>
+                        {material.requerAprovacao && (
+                          <ShieldAlert 
+                            size={12} 
+                            color={theme.colors.status.warning} 
+                            aria-label="Requer aprovação para sair" 
+                          />
+                        )}
+                      </RowNomeLinha>
                       {/* REV: código agora com rótulo, antes aparecia "pelado" */}
                       <RowMeta>
                         <Hash size={10} />

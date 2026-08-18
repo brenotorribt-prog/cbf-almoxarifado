@@ -137,11 +137,11 @@ enum TipoUnidade {
 }
 
 // =====================================================================
-// AUTENTICAÇÃO (NextAuth v5 / Auth.js - Prisma Adapter)
+// AUTENTICAÇÃO (Supabase Auth — id é o UUID do Supabase, não gerado pelo Prisma)
 // =====================================================================
 
 model User {
-  id String @id @default(cuid())
+  id String @id
 
   name      String
   nome      String
@@ -150,7 +150,6 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
-  password      String?
   role          Role      @default(SOLICITANTE)
 
   ativo Boolean @default(false)
@@ -168,9 +167,6 @@ model User {
   telefone  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  accounts Account[]
-  sessions Session[]
 
   materiaisCadastrados   Material[]             @relation("MaterialCriadoPor")
   movimentacoes          MovimentacaoEstoque[]  @relation("MovimentacaoUsuario")
@@ -190,42 +186,6 @@ model User {
   @@index([email])
   @@index([status])
   @@index([ativo])
-}
-
-model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String? @db.Text
-  session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
 }
 
 // =====================================================================
