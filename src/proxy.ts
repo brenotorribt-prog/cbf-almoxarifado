@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server"
 const ROTAS_PUBLICAS = ["/", "/login", "/cadastro"]
 const ROTAS_REDIRECIONAM_LOGADO = ["/login", "/cadastro"]
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({
     request: {
       headers: request.headers,
