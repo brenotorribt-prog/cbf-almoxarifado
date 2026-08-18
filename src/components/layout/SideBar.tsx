@@ -651,7 +651,7 @@ const NavList = styled.ul`
   padding: 0;
 `
 
-const NavLink = styled(motion(Link))<{ $active: boolean; $collapsed: boolean }>`
+const NavLink = styled(motion.create(Link))<{ $active: boolean; $collapsed: boolean }>`
   position: relative;
   display: grid;
   grid-template-columns: 10px 22px 1fr;
