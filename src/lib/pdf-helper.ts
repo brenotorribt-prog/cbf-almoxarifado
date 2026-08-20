@@ -51,7 +51,7 @@ export async function viewPDF(
     const blob = await response.blob()
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
-    setTimeout(() => URL.revokeObjectURL(url), 10000)
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
   } catch (error) {
     console.error('Erro ao abrir PDF:', error)
     throw error

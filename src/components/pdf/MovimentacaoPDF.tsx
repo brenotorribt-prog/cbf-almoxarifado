@@ -27,20 +27,23 @@ interface MovimentacaoPDFProps {
   footerLogoUrl?: string
 }
 
-export function MovimentacaoPDF({ data, logoUrl, footerLogoUrl }: MovimentacaoPDFProps) {
-  const tipoLabel = {
-    ENTRADA: 'Entrada',
-    SAIDA: 'Saída',
-    AJUSTE: 'Ajuste',
-    DESCARTE: 'Descarte',
-  }[data.tipo]
+const TIPO_LABEL: Record<MovimentacaoPDFProps['data']['tipo'], string> = {
+  ENTRADA: 'Entrada',
+  SAIDA: 'Saída',
+  AJUSTE: 'Ajuste',
+  DESCARTE: 'Descarte',
+}
 
-  const tipoColor = {
-    ENTRADA: pdfStyles.badgeSuccess,
-    SAIDA: pdfStyles.badgeError,
-    AJUSTE: pdfStyles.badgeInfo,
-    DESCARTE: pdfStyles.badgeWarning,
-  }[data.tipo]
+const TIPO_TEXT_COLOR: Record<MovimentacaoPDFProps['data']['tipo'], string> = {
+  ENTRADA: '#00B347',
+  SAIDA: '#E53935',
+  AJUSTE: '#3D7DFF',
+  DESCARTE: '#8B5CF6',
+}
+
+export function MovimentacaoPDF({ data, logoUrl, footerLogoUrl }: MovimentacaoPDFProps) {
+  const tipoLabel = TIPO_LABEL[data.tipo]
+  const tipoCor = TIPO_TEXT_COLOR[data.tipo]
 
   const formattedDate = format(new Date(data.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
   const dataFormatada = format(new Date(data.createdAt), "dd/MM/yyyy", { locale: ptBR })
@@ -51,9 +54,7 @@ export function MovimentacaoPDF({ data, logoUrl, footerLogoUrl }: MovimentacaoPD
       <Page size="A4" style={pdfStyles.page}>
         {/* CABEÇALHO COM LOGO */}
         <View style={pdfStyles.header}>
-          {logoUrl && (
-            <Image src={logoUrl} style={pdfStyles.logo} />
-          )}
+          {logoUrl && <Image src={logoUrl} style={pdfStyles.logo} />}
           <View style={pdfStyles.headerText}>
             <Text style={pdfStyles.title}>COMPROVANTE DE MOVIMENTAÇÃO</Text>
             <Text style={pdfStyles.subtitle}>Sistema de Almoxarifado CBF</Text>
@@ -76,9 +77,7 @@ export function MovimentacaoPDF({ data, logoUrl, footerLogoUrl }: MovimentacaoPD
           </View>
           <View style={pdfStyles.row}>
             <Text style={pdfStyles.label}>Tipo:</Text>
-            <Text style={[pdfStyles.value, { color: data.tipo === 'ENTRADA' ? '#00B347' : data.tipo === 'SAIDA' ? '#E53935' : '#3D7DFF' }]}>
-              {tipoLabel}
-            </Text>
+            <Text style={[pdfStyles.value, { color: tipoCor }]}>{tipoLabel}</Text>
           </View>
         </View>
 
@@ -167,28 +166,20 @@ export function MovimentacaoPDF({ data, logoUrl, footerLogoUrl }: MovimentacaoPD
           </View>
         </View>
 
-        {/* ASSINATURAS */}
-        <View style={pdfStyles.signature}>
-          <View style={pdfStyles.signatureRow}>
-            <View style={pdfStyles.signatureBox}>
-              <Text style={pdfStyles.signatureLabel}>___________________________________</Text>
-              <Text style={pdfStyles.signatureName}>Assinatura do Retirante</Text>
-            </View>
-            <View style={pdfStyles.signatureBox}>
-              <Text style={pdfStyles.signatureLabel}>___________________________________</Text>
-              <Text style={pdfStyles.signatureName}>Assinatura do Almoxarife</Text>
-            </View>
-          </View>
+        {/* REFERÊNCIA AO RECIBO FÍSICO — a assinatura fica no recibo impresso e arquivado,
+            não neste comprovante digital */}
+        <View style={pdfStyles.notaRecibo} wrap={false}>
+          <Text style={pdfStyles.notaReciboTitulo}>Comprovante de lançamento no sistema</Text>
+          <Text style={pdfStyles.notaReciboTexto}>
+            Este documento é apenas o registro digital da movimentação. O recibo físico com a
+            assinatura do retirante foi impresso separadamente e arquivado no almoxarifado.
+          </Text>
         </View>
 
         {/* RODAPÉ COM LOGO */}
         <View style={pdfStyles.footer} fixed>
-          {footerLogoUrl && (
-            <Image src={footerLogoUrl} style={pdfStyles.footerLogo} />
-          )}
-          <Text style={pdfStyles.footerText}>
-            Documento gerado em {formattedDate}
-          </Text>
+          {footerLogoUrl && <Image src={footerLogoUrl} style={pdfStyles.footerLogo} />}
+          <Text style={pdfStyles.footerText}>Documento gerado em {formattedDate}</Text>
         </View>
       </Page>
     </Document>

@@ -32,6 +32,7 @@ import {
   User,
   Building2,
   Briefcase,
+  Printer, // ← adicionado
 } from "lucide-react"
 import { downloadPDF } from "@/lib/pdf-helper"
 
@@ -547,6 +548,36 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
   const [salvando, setSalvando] = useState(false)
   const [erroGeral, setErroGeral] = useState<string | null>(null)
   const [errosCampo, setErrosCampo] = useState<Record<string, string>>({})
+  
+  // ===== NOVO: state e handler para impressão =====
+  const [imprimindo, setImprimindo] = useState(false)
+
+  async function handleImprimirRecibo() {
+    if (!validar() || !materialSelecionado || quantidadeNumerica === null) return
+    setImprimindo(true)
+    try {
+      const { gerarEAbrirRecibo } = await import("@/lib/gerar-recibo-cliente")
+      await gerarEAbrirRecibo({
+        tipoDocumento: "SAIDA",
+        data: new Date(),
+        solicitanteNome: solicitanteNome.trim() || "Não informado",
+        solicitanteSetor: solicitanteSetor.trim() || null,
+        solicitanteFuncao: solicitanteFuncao.trim() || null,
+        itens: [
+          {
+            nome: materialSelecionado.nome,
+            codigoInterno: materialSelecionado.codigoInterno,
+            quantidade: quantidadeNumerica,
+            unidade: materialSelecionado.unidadeMedida.sigla,
+          },
+        ],
+        motivo: motivo.trim() || null,
+      })
+    } finally {
+      setImprimindo(false)
+    }
+  }
+  // ===== FIM NOVO =====
 
   // ---------------------------------------------------------------
   // busca debounced
@@ -930,15 +961,28 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
           </AvisoInfo>
         )}
 
+        {/* ===== ModalActions MODIFICADO ===== */}
         <ModalActions>
           <ActionButton type="button" $variant="ghost" disabled={salvando} onClick={onClose}>
             Cancelar
           </ActionButton>
+          {tipo === "SAIDA" && (
+            <ActionButton
+              type="button"
+              $variant="ghost"
+              disabled={bloqueado || !materialSelecionado || imprimindo}
+              onClick={handleImprimirRecibo}
+            >
+              {imprimindo ? <Loader2 size={14} className="spin" /> : <Printer size={14} />}
+              Imprimir p/ assinatura
+            </ActionButton>
+          )}
           <ActionButton type="submit" $variant="primary" $cor={config.cor} disabled={bloqueado}>
             {salvando ? <Loader2 size={14} className="spin" /> : <Check size={14} />}
             Registrar {config.label.toLowerCase()}
           </ActionButton>
         </ModalActions>
+        {/* ===== FIM MODALACTIONS ===== */}
       </ModalCard>
     </ModalOverlay>
   )

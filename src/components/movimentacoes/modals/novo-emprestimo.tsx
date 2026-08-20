@@ -33,6 +33,7 @@ import {
   Building2,
   Briefcase,
   CalendarClock,
+  Printer, // ← ADICIONADO
 } from "lucide-react"
 import { downloadPDF } from "@/lib/pdf-helper"
 
@@ -603,6 +604,35 @@ export default function NovoEmprestimoModal({ onClose, onSalvo }: NovoEmprestimo
   // resultado pós-submit (tela de resumo)
   const [resultado, setResultado] = useState<EmprestimoCriado[] | null>(null)
 
+  // ===== NOVO: state e handler para impressão =====
+const [imprimindo, setImprimindo] = useState(false)
+
+async function handleImprimirRecibo() {
+  if (!validar()) return
+  setImprimindo(true)
+  try {
+    const { gerarEAbrirRecibo } = await import("@/lib/gerar-recibo-cliente")
+    await gerarEAbrirRecibo({
+      tipoDocumento: "EMPRESTIMO",
+      data: new Date(),
+      solicitanteNome: solicitanteNome.trim(),
+      solicitanteSetor: solicitanteSetor.trim() || null,
+      solicitanteFuncao: solicitanteFuncao.trim() || null,
+      itens: itens.map((i) => ({
+        nome: i.material.nome,
+        codigoInterno: i.material.codigoInterno,
+        quantidade: numeroOuNull(i.quantidade) ?? 0,
+        unidade: i.material.unidadeMedida.sigla,
+      })),
+      motivo: observacoes.trim() || null, // ✅ usa 'motivo' em vez de 'observacoes'
+      dataPrevistaDevolucao: new Date(dataPrevistaDevolucao),
+    })
+  } finally {
+    setImprimindo(false)
+  }
+}
+// ===== FIM NOVO =====
+
   // ---------------------------------------------------------------
   // busca debounced (mesmo endpoint leve do modal de movimentação)
   // ---------------------------------------------------------------
@@ -1027,15 +1057,26 @@ export default function NovoEmprestimoModal({ onClose, onSalvo }: NovoEmprestimo
           </FieldGroup>
         </Secao>
 
+        {/* ===== ModalActions MODIFICADO ===== */}
         <ModalActions>
           <ActionButton type="button" $variant="ghost" disabled={salvando} onClick={onClose}>
             Cancelar
+          </ActionButton>
+          <ActionButton
+            type="button"
+            $variant="ghost"
+            disabled={bloqueado || itens.length === 0 || imprimindo}
+            onClick={handleImprimirRecibo}
+          >
+            {imprimindo ? <Loader2 size={14} className="spin" /> : <Printer size={14} />}
+            Imprimir p/ assinatura
           </ActionButton>
           <ActionButton type="submit" $variant="primary" disabled={bloqueado || itens.length === 0}>
             {salvando ? <Loader2 size={14} className="spin" /> : <HandCoins size={14} />}
             Registrar empréstimo
           </ActionButton>
         </ModalActions>
+        {/* ===== FIM MODALACTIONS ===== */}
       </ModalCard>
     </ModalOverlay>
   )
