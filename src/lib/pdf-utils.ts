@@ -171,6 +171,38 @@ export const pdfStyles = StyleSheet.create({
     color: '#374151',
     lineHeight: 1.4,
   },
+  // ========== NOVOS ESTILOS COMPACTOS ==========
+  
+  // Row mais compacto (menos padding vertical)
+  rowCompact: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 2, // antes era 4
+  },
+  
+  // Section mais compacta (menos padding e margem)
+  sectionCompact: {
+    marginVertical: 4,
+    padding: 8,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: '#e5e7eb',
+    borderRadius: 4,
+  },
+  
+  // Nota de recibo mais compacta
+  notaReciboCompacta: {
+    marginTop: 12,
+    marginBottom: 12,
+    padding: 8,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: '#bfdbfe',
+    borderRadius: 4,
+  },
+  // ========== FIM NOVOS ESTILOS ==========
+  
   footer: {
     position: 'absolute',
     bottom: 30,

@@ -30,11 +30,11 @@ interface EmprestimoPDFProps {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  PENDENTE_APROVACAO: 'Pendente de Aprovação',
+  PENDENTE_APROVACAO: 'Pendente',
   EMPRESTADO: 'Emprestado',
   DEVOLVIDO: 'Devolvido',
   ATRASADO: 'Atrasado',
-  PERDIDO: 'Perdido/Descartado',
+  PERDIDO: 'Perdido',
   REJEITADO: 'Rejeitado',
 }
 
@@ -60,38 +60,34 @@ export function EmprestimoPDF({ data, logoUrl, footerLogoUrl, isDevolucao }: Emp
           </View>
         </View>
 
-        {/* INFORMAÇÕES DO DOCUMENTO */}
+        {/* INFORMAÇÕES DO DOCUMENTO - mais compacto */}
         <View style={pdfStyles.section}>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Nº do documento:</Text>
+          <View style={pdfStyles.rowCompact}>
+            <Text style={pdfStyles.label}>Documento:</Text>
             <Text style={pdfStyles.value}>{data.id}</Text>
           </View>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Data da retirada:</Text>
-            <Text style={pdfStyles.value}>{dataRetiradaFormatada}</Text>
+          <View style={pdfStyles.rowCompact}>
+            <Text style={pdfStyles.label}>Retirada:</Text>
+            <Text style={pdfStyles.value}>{dataRetiradaFormatada} {horaRetiradaFormatada}</Text>
           </View>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Horário da retirada:</Text>
-            <Text style={pdfStyles.value}>{horaRetiradaFormatada}</Text>
-          </View>
-          <View style={pdfStyles.row}>
+          <View style={pdfStyles.rowCompact}>
             <Text style={pdfStyles.label}>Status:</Text>
             <Text style={pdfStyles.value}>{statusLabel}</Text>
           </View>
         </View>
 
-        {/* DADOS DO MATERIAL */}
+        {/* DADOS DO MATERIAL - mais compacto */}
         <View style={pdfStyles.section}>
-          <Text style={pdfStyles.sectionTitle}>Dados do Material</Text>
-          <View style={pdfStyles.row}>
+          <Text style={pdfStyles.sectionTitle}>Material</Text>
+          <View style={pdfStyles.rowCompact}>
             <Text style={pdfStyles.label}>Código:</Text>
             <Text style={pdfStyles.value}>{data.material.codigoInterno}</Text>
           </View>
-          <View style={pdfStyles.row}>
+          <View style={pdfStyles.rowCompact}>
             <Text style={pdfStyles.label}>Material:</Text>
             <Text style={pdfStyles.value}>{data.material.nome}</Text>
           </View>
-          <View style={pdfStyles.row}>
+          <View style={pdfStyles.rowCompact}>
             <Text style={pdfStyles.label}>Quantidade:</Text>
             <Text style={pdfStyles.value}>
               {data.quantidade} {data.material.unidadeMedida.sigla}
@@ -99,75 +95,50 @@ export function EmprestimoPDF({ data, logoUrl, footerLogoUrl, isDevolucao }: Emp
           </View>
         </View>
 
-        {/* SOLICITANTE */}
+        {/* SOLICITANTE E PRAZO - condensados */}
         <View style={pdfStyles.section}>
-          <Text style={pdfStyles.sectionTitle}>Dados do Solicitante</Text>
-          <View style={pdfStyles.row}>
+          <Text style={pdfStyles.sectionTitle}>Solicitante</Text>
+          <View style={pdfStyles.rowCompact}>
             <Text style={pdfStyles.label}>Nome:</Text>
-            <Text style={pdfStyles.value}>{data.solicitanteNome}</Text>
+            <Text style={pdfStyles.value}>
+              {data.solicitanteNome}
+              {data.solicitanteSetor && ` · ${data.solicitanteSetor}`}
+              {data.solicitanteFuncao && ` (${data.solicitanteFuncao})`}
+            </Text>
           </View>
-          {data.solicitanteSetor && (
-            <View style={pdfStyles.row}>
-              <Text style={pdfStyles.label}>Setor:</Text>
-              <Text style={pdfStyles.value}>{data.solicitanteSetor}</Text>
-            </View>
-          )}
-          {data.solicitanteFuncao && (
-            <View style={pdfStyles.row}>
-              <Text style={pdfStyles.label}>Função:</Text>
-              <Text style={pdfStyles.value}>{data.solicitanteFuncao}</Text>
-            </View>
-          )}
+          <View style={pdfStyles.rowCompact}>
+            <Text style={pdfStyles.label}>Devolução:</Text>
+            <Text style={pdfStyles.value}>
+              {dataPrevistaFormatada}
+              {data.dataDevolucao && ` (devolvido em ${format(new Date(data.dataDevolucao), "dd/MM/yyyy", { locale: ptBR })})`}
+            </Text>
+          </View>
         </View>
 
-        {/* PRAZO DE DEVOLUÇÃO */}
-        <View style={pdfStyles.section}>
-          <Text style={pdfStyles.sectionTitle}>Prazo de Devolução</Text>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Data prevista:</Text>
-            <Text style={pdfStyles.value}>{dataPrevistaFormatada}</Text>
-          </View>
-          {data.dataDevolucao && (
-            <View style={pdfStyles.row}>
-              <Text style={pdfStyles.label}>Data devolvida:</Text>
-              <Text style={pdfStyles.value}>
-                {format(new Date(data.dataDevolucao), "dd/MM/yyyy", { locale: ptBR })}
-              </Text>
-            </View>
-          )}
+        {/* RESPONSÁVEL - condensado */}
+        <View style={pdfStyles.sectionCompact}>
+          <Text style={pdfStyles.sectionTitle}>Registrado por</Text>
+          <Text style={pdfStyles.value}>
+            {data.responsavel.name}
+            {data.aprovador && ` · Aprovador: ${data.aprovador.name}`}
+          </Text>
         </View>
 
-        {/* RESPONSÁVEL */}
-        <View style={pdfStyles.section}>
-          <Text style={pdfStyles.sectionTitle}>Responsável</Text>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Almoxarife:</Text>
-            <Text style={pdfStyles.value}>{data.responsavel.name}</Text>
-          </View>
-          {data.aprovador && (
-            <View style={pdfStyles.row}>
-              <Text style={pdfStyles.label}>Aprovador:</Text>
-              <Text style={pdfStyles.value}>{data.aprovador.name}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* OBSERVAÇÕES */}
+        {/* OBSERVAÇÕES - opcional e compacto */}
         {data.observacoes && (
-          <View style={pdfStyles.section}>
+          <View style={pdfStyles.sectionCompact}>
             <Text style={pdfStyles.sectionTitle}>Observações</Text>
             <Text style={pdfStyles.value}>{data.observacoes}</Text>
           </View>
         )}
 
-        {/* REFERÊNCIA AO RECIBO FÍSICO — a assinatura fica no recibo impresso e arquivado,
-            não neste comprovante digital */}
-        <View style={pdfStyles.notaRecibo} wrap={false}>
-          <Text style={pdfStyles.notaReciboTitulo}>Comprovante de lançamento no sistema</Text>
+        {/* REFERÊNCIA AO RECIBO FÍSICO - versão mais compacta */}
+        <View style={pdfStyles.notaReciboCompacta} wrap={false}>
+          <Text style={pdfStyles.notaReciboTitulo}>📋 Comprovante digital</Text>
           <Text style={pdfStyles.notaReciboTexto}>
             {isDevolucao
-              ? 'Este documento é apenas o registro digital da devolução. O comprovante físico com a assinatura foi impresso separadamente e arquivado no almoxarifado.'
-              : 'Este documento é apenas o registro digital do empréstimo. O termo físico com a assinatura do retirante foi impresso separadamente e arquivado no almoxarifado.'}
+              ? 'Registro digital da devolução. O comprovante físico assinado está arquivado.'
+              : 'Registro digital do empréstimo. O termo físico assinado está arquivado.'}
           </Text>
         </View>
 

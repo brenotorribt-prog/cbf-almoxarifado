@@ -15,6 +15,7 @@ interface MovimentacaoPDFProps {
     documentoReferencia: string | null
     solicitanteNome: string | null
     solicitanteSetor: string | null
+    solicitanteFuncao: string | null // ← já existe na interface
     createdAt: string
     material: {
       nome: string
@@ -63,19 +64,15 @@ export function MovimentacaoPDF({ data, logoUrl, footerLogoUrl }: MovimentacaoPD
 
         {/* INFORMAÇÕES DO DOCUMENTO */}
         <View style={pdfStyles.section}>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Nº do documento:</Text>
+          <View style={pdfStyles.rowCompact}>
+            <Text style={pdfStyles.label}>Documento:</Text>
             <Text style={pdfStyles.value}>{data.id}</Text>
           </View>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Data:</Text>
-            <Text style={pdfStyles.value}>{dataFormatada}</Text>
+          <View style={pdfStyles.rowCompact}>
+            <Text style={pdfStyles.label}>Data/Hora:</Text>
+            <Text style={pdfStyles.value}>{dataFormatada} {horaFormatada}</Text>
           </View>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Horário:</Text>
-            <Text style={pdfStyles.value}>{horaFormatada}</Text>
-          </View>
-          <View style={pdfStyles.row}>
+          <View style={pdfStyles.rowCompact}>
             <Text style={pdfStyles.label}>Tipo:</Text>
             <Text style={[pdfStyles.value, { color: tipoCor }]}>{tipoLabel}</Text>
           </View>
@@ -83,96 +80,70 @@ export function MovimentacaoPDF({ data, logoUrl, footerLogoUrl }: MovimentacaoPD
 
         {/* DADOS DO MATERIAL */}
         <View style={pdfStyles.section}>
-          <Text style={pdfStyles.sectionTitle}>Dados do Material</Text>
-          <View style={pdfStyles.row}>
+          <Text style={pdfStyles.sectionTitle}>Material</Text>
+          <View style={pdfStyles.rowCompact}>
             <Text style={pdfStyles.label}>Código:</Text>
             <Text style={pdfStyles.value}>{data.material.codigoInterno}</Text>
           </View>
-          <View style={pdfStyles.row}>
+          <View style={pdfStyles.rowCompact}>
             <Text style={pdfStyles.label}>Material:</Text>
             <Text style={pdfStyles.value}>{data.material.nome}</Text>
           </View>
-          <View style={pdfStyles.row}>
+          <View style={pdfStyles.rowCompact}>
             <Text style={pdfStyles.label}>Quantidade:</Text>
             <Text style={pdfStyles.value}>
               {data.quantidade} {data.material.unidadeMedida.sigla}
             </Text>
           </View>
-        </View>
-
-        {/* CONTROLE DE ESTOQUE */}
-        <View style={pdfStyles.section}>
-          <Text style={pdfStyles.sectionTitle}>Controle de Estoque</Text>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Estoque anterior:</Text>
+          <View style={pdfStyles.rowCompact}>
+            <Text style={pdfStyles.label}>Estoque:</Text>
             <Text style={pdfStyles.value}>
-              {data.quantidadeAnterior} {data.material.unidadeMedida.sigla}
-            </Text>
-          </View>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Estoque atual:</Text>
-            <Text style={pdfStyles.value}>
-              {data.quantidadeAtual} {data.material.unidadeMedida.sigla}
+              {data.quantidadeAnterior} → {data.quantidadeAtual} {data.material.unidadeMedida.sigla}
             </Text>
           </View>
         </View>
 
-        {/* MOTIVO E DOCUMENTO DE REFERÊNCIA */}
-        {(data.motivo || data.documentoReferencia) && (
-          <View style={pdfStyles.section}>
-            <Text style={pdfStyles.sectionTitle}>Informações Adicionais</Text>
-            {data.motivo && (
-              <View style={pdfStyles.row}>
-                <Text style={pdfStyles.label}>Motivo:</Text>
-                <Text style={pdfStyles.value}>{data.motivo}</Text>
-              </View>
-            )}
-            {data.documentoReferencia && (
-              <View style={pdfStyles.row}>
-                <Text style={pdfStyles.label}>Documento:</Text>
-                <Text style={pdfStyles.value}>{data.documentoReferencia}</Text>
-              </View>
-            )}
+        {/* MOTIVO */}
+        {data.motivo && (
+          <View style={pdfStyles.sectionCompact}>
+            <Text style={pdfStyles.sectionTitle}>Motivo</Text>
+            <Text style={pdfStyles.value}>{data.motivo}</Text>
           </View>
         )}
 
-        {/* SOLICITANTE */}
+        {/* SOLICITANTE - AGORA COM FUNÇÃO */}
         {data.solicitanteNome && (
-          <View style={pdfStyles.section}>
+          <View style={pdfStyles.sectionCompact}>
             <Text style={pdfStyles.sectionTitle}>Solicitante</Text>
-            <View style={pdfStyles.row}>
-              <Text style={pdfStyles.label}>Nome:</Text>
-              <Text style={pdfStyles.value}>{data.solicitanteNome}</Text>
-            </View>
-            {data.solicitanteSetor && (
-              <View style={pdfStyles.row}>
-                <Text style={pdfStyles.label}>Setor:</Text>
-                <Text style={pdfStyles.value}>{data.solicitanteSetor}</Text>
-              </View>
-            )}
+            <Text style={pdfStyles.value}>
+              {data.solicitanteNome}
+              {data.solicitanteSetor && ` · ${data.solicitanteSetor}`}
+              {data.solicitanteFuncao && ` (${data.solicitanteFuncao})`}
+            </Text>
+          </View>
+        )}
+
+        {/* DOCUMENTO DE REFERÊNCIA - se houver */}
+        {data.documentoReferencia && (
+          <View style={pdfStyles.sectionCompact}>
+            <Text style={pdfStyles.sectionTitle}>Documento de referência</Text>
+            <Text style={pdfStyles.value}>{data.documentoReferencia}</Text>
           </View>
         )}
 
         {/* RESPONSÁVEL PELO REGISTRO */}
-        <View style={pdfStyles.section}>
-          <Text style={pdfStyles.sectionTitle}>Responsável pelo Registro</Text>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Nome:</Text>
-            <Text style={pdfStyles.value}>{data.usuario.name}</Text>
-          </View>
-          <View style={pdfStyles.row}>
-            <Text style={pdfStyles.label}>Data/Hora:</Text>
-            <Text style={pdfStyles.value}>{formattedDate}</Text>
-          </View>
+        <View style={pdfStyles.sectionCompact}>
+          <Text style={pdfStyles.sectionTitle}>Registrado por</Text>
+          <Text style={pdfStyles.value}>
+            {data.usuario.name} · {formattedDate}
+          </Text>
         </View>
 
-        {/* REFERÊNCIA AO RECIBO FÍSICO — a assinatura fica no recibo impresso e arquivado,
-            não neste comprovante digital */}
-        <View style={pdfStyles.notaRecibo} wrap={false}>
-          <Text style={pdfStyles.notaReciboTitulo}>Comprovante de lançamento no sistema</Text>
+        {/* REFERÊNCIA AO RECIBO FÍSICO */}
+        <View style={pdfStyles.notaReciboCompacta} wrap={false}>
+          <Text style={pdfStyles.notaReciboTitulo}>Comprovante digital</Text>
           <Text style={pdfStyles.notaReciboTexto}>
-            Este documento é apenas o registro digital da movimentação. O recibo físico com a
-            assinatura do retirante foi impresso separadamente e arquivado no almoxarifado.
+            Este é o registro digital da movimentação. O recibo físico assinado está arquivado no almoxarifado.
           </Text>
         </View>
 
