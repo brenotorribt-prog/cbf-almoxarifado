@@ -94,6 +94,7 @@ export async function GET(req: NextRequest) {
           documentoReferencia: movimentacao.documentoReferencia,
           solicitanteNome: movimentacao.solicitanteNome,
           solicitanteSetor: movimentacao.solicitanteSetor,
+          solicitanteFuncao: movimentacao.solicitanteFuncao, // ← ADICIONADO
           createdAt: movimentacao.createdAt.toISOString(),
           material: {
             nome: movimentacao.material.nome,
