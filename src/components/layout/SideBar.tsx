@@ -18,6 +18,8 @@ import {
   LogOut,
   Menu,
   X,
+  AlertTriangle,
+  Loader2,
   type LucideIcon,
 } from "lucide-react"
 import { hexToRgba } from "@/styles/theme"
@@ -78,6 +80,107 @@ interface PerfilSidebar {
   image: string | null
 }
 
+// =====================================================================
+// MODAL DE CONFIRMAÇÃO DE LOGOUT (Sidebar)
+// =====================================================================
+
+const ConfirmOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: ${({ theme }) => theme.zIndex.modal + 1};
+  padding: ${({ theme }) => theme.spacing[4]};
+  animation: fadeIn 0.15s ease both;
+`
+
+const ConfirmCard = styled.div`
+  background: ${({ theme }) => theme.colors.surface.card};
+  border: 1px solid ${({ theme }) => theme.colors.surface.border};
+  border-radius: ${({ theme }) => theme.radii.lg};
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: ${({ theme }) => theme.shadows.card};
+  width: 100%;
+  max-width: 400px;
+  padding: ${({ theme }) => theme.spacing[6]};
+  display: flex;
+  flex-direction: column;
+  gap: ${({ theme }) => theme.spacing[4]};
+  animation: slideIn 0.2s ease both;
+`
+
+const ConfirmTitle = styled.h3`
+  font-size: ${({ theme }) => theme.typography.fontSize.lg};
+  color: ${({ theme }) => theme.colors.text.primary};
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing[2]};
+`
+
+const ConfirmMessage = styled.p`
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  color: ${({ theme }) => theme.colors.text.secondary};
+  line-height: 1.6;
+`
+
+const ConfirmActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: ${({ theme }) => theme.spacing[3]};
+  padding-top: ${({ theme }) => theme.spacing[3]};
+  border-top: 1px solid ${({ theme }) => theme.colors.surface.border};
+`
+
+const ConfirmButton = styled.button<{ $variant: "danger" | "ghost" }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: ${({ theme }) => `${theme.spacing[2]} ${theme.spacing[5]}`};
+  border-radius: ${({ theme }) => theme.radii.md};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+  transition: all ${({ theme }) => theme.transitions.fast};
+
+  ${({ $variant, theme }) =>
+    $variant === "danger" &&
+    `
+    background: ${theme.colors.status.error};
+    color: ${theme.colors.neutral.white};
+    &:hover:not(:disabled) { 
+      background: ${theme.colors.status.error};
+      transform: scale(1.02);
+    }
+  `}
+  
+  ${({ $variant, theme }) =>
+    $variant === "ghost" &&
+    `
+    background: transparent;
+    color: ${theme.colors.text.secondary};
+    border: 1px solid ${theme.colors.surface.border};
+    &:hover:not(:disabled) { 
+      background: ${theme.colors.surface.glass}; 
+      color: ${theme.colors.text.primary};
+    }
+  `}
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`
+
+const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`
+const slideIn = keyframes`
+  from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+`
+const spin = keyframes`to { transform: rotate(360deg); }`
+
 export default function Sidebar({
   user = { name: "Usuário Convidado", role: "Almoxarife" },
   onLogout,
@@ -91,6 +194,10 @@ export default function Sidebar({
 
   const [travellingIndex, setTravellingIndex] = useState<number | null>(null)
   const previousIndex = useRef(0)
+
+  // Estado para o modal de confirmação de logout
+  const [mostrarConfirmLogout, setMostrarConfirmLogout] = useState(false)
+  const [saindo, setSaindo] = useState(false)
 
   const carregarPerfil = useCallback(async () => {
     try {
@@ -157,16 +264,43 @@ export default function Sidebar({
     return () => timers.forEach(clearTimeout)
   }, [activeIndex])
 
-  async function handleLogout() {
-    if (onLogout) {
-      onLogout()
-      return
+  // Função que abre o modal de confirmação de logout
+  const handleAbrirConfirmLogout = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation() // impede que o clique também abra o modal de perfil
+    setMostrarConfirmLogout(true)
+  }, [])
+
+  // Função que confirma o logout
+  const handleConfirmLogout = useCallback(async () => {
+    setSaindo(true)
+    try {
+      setMostrarConfirmLogout(false)
+      
+      if (onLogout) {
+        await onLogout()
+        return
+      }
+      
+      const supabase = createClient()
+      await supabase.auth.signOut()
+      router.push("/login")
+      router.refresh()
+    } catch (error) {
+      console.error("Erro ao fazer logout:", error)
+      setSaindo(false)
     }
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/login")
-    router.refresh()
-  }
+  }, [onLogout, router])
+
+  // Função que cancela o logout
+  const handleCancelLogout = useCallback(() => {
+    setMostrarConfirmLogout(false)
+  }, [])
+
+  // Função para fechar o modal e recarregar o perfil
+  const handleClosePerfil = useCallback(() => {
+    setPerfilAberto(false)
+    carregarPerfil()
+  }, [carregarPerfil])
 
   return (
     <>
@@ -326,7 +460,6 @@ export default function Sidebar({
           <ProfileRow
             $collapsed={collapsed}
             onClick={() => setPerfilAberto(true)}
-            style={{ cursor: "pointer" }}
           >
             <Avatar>
               {usuarioExibido.avatarUrl ? (
@@ -338,8 +471,19 @@ export default function Sidebar({
 
             {!collapsed && (
               <ProfileInfo>
-                <ProfileName title={usuarioExibido.name}>{usuarioExibido.name}</ProfileName>
-                {usuarioExibido.role && <ProfileRole title={usuarioExibido.role}>{usuarioExibido.role}</ProfileRole>}
+                <ProfileName 
+                  title={`Clique para abrir o perfil - ${usuarioExibido.name}`}
+                >
+                  {usuarioExibido.name}
+                </ProfileName>
+                {usuarioExibido.role && (
+                  <ProfileRole title={usuarioExibido.role}>
+                    {usuarioExibido.role}
+                  </ProfileRole>
+                )}
+                <ProfileHint>
+                  <span>Clique para editar perfil</span>
+                </ProfileHint>
               </ProfileInfo>
             )}
 
@@ -347,10 +491,7 @@ export default function Sidebar({
               type="button"
               aria-label="Sair"
               title="Sair"
-              onClick={(e) => {
-                e.stopPropagation() // impede que o clique também abra o modal de perfil
-                handleLogout()
-              }}
+              onClick={handleAbrirConfirmLogout}
             >
               <LogOut size={16} strokeWidth={2} />
             </LogoutButton>
@@ -360,9 +501,54 @@ export default function Sidebar({
 
       {perfilAberto && (
         <ModalPerfil
-          onClose={() => setPerfilAberto(false)}
+          onClose={handleClosePerfil}
           onProfileUpdated={carregarPerfil}
+          onLogout={handleConfirmLogout}
         />
+      )}
+
+      {/* Modal de confirmação de logout - Sidebar */}
+      {mostrarConfirmLogout && (
+        <ConfirmOverlay onClick={handleCancelLogout}>
+          <ConfirmCard onClick={(e) => e.stopPropagation()}>
+            <ConfirmTitle>
+              <AlertTriangle size={20} style={{ color: theme.colors.status.error }} />
+              Confirmar saída
+            </ConfirmTitle>
+            <ConfirmMessage>
+              Tem certeza que deseja sair da sua conta? 
+              Você precisará fazer login novamente para acessar o sistema.
+            </ConfirmMessage>
+            <ConfirmActions>
+              <ConfirmButton 
+                type="button" 
+                $variant="ghost" 
+                onClick={handleCancelLogout}
+                disabled={saindo}
+              >
+                Cancelar
+              </ConfirmButton>
+              <ConfirmButton 
+                type="button" 
+                $variant="danger" 
+                onClick={handleConfirmLogout}
+                disabled={saindo}
+              >
+                {saindo ? (
+                  <>
+                    <Loader2 size={14} className="spin" />
+                    Saindo...
+                  </>
+                ) : (
+                  <>
+                    <LogOut size={14} />
+                    Sair
+                  </>
+                )}
+              </ConfirmButton>
+            </ConfirmActions>
+          </ConfirmCard>
+        </ConfirmOverlay>
       )}
     </>
   )
@@ -781,6 +967,16 @@ const ProfileRow = styled.div<{ $collapsed: boolean }>`
   gap: ${({ theme }) => theme.spacing[3]};
   padding: ${({ theme }) => theme.spacing[3]} ${({ theme }) => theme.spacing[4]};
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background ${({ theme }) => theme.transitions.fast};
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  &:active {
+    background: rgba(255, 255, 255, 0.08);
+  }
 
   ${({ $collapsed }) =>
     $collapsed &&
@@ -850,6 +1046,22 @@ const ProfileRole = styled.span`
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+`
+
+const ProfileHint = styled.div`
+  font-family: ${({ theme }) => theme.typography.fontFamily.sans};
+  font-size: 0.6rem;
+  color: ${({ theme }) => theme.colors.text.muted};
+  opacity: 0.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+  transition: opacity ${({ theme }) => theme.transitions.fast};
+
+  ${ProfileRow}:hover & {
+    opacity: 0.8;
+  }
 `
 
 const LogoutButton = styled.button`

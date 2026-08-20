@@ -1,5 +1,38 @@
 // =====================================================================
-// SCHEMA - CBF Almoxarifado (COM APROVAÇÃO DE EMPRÉSTIMO)
+// SCHEMA - CBF Almoxarifado (COM MÓDULO DE REQUISIÇÕES POR ITEM)
+// =====================================================================
+//
+// ALTERAÇÕES NESTA REVISÃO (módulo Requisições):
+//
+// 1. Solicitacao virou um CABEÇALHO de pedido (numero, tipo, origem,
+//    prioridade, status AGREGADO calculado a partir dos itens). Os campos
+//    materialId/quantidade/aprovador*/preparador* saíram daqui.
+//
+// 2. Novo model ItemSolicitacao — uma linha por material dentro do pedido,
+//    com status, aprovação e preparo PRÓPRIOS. Tem a flag
+//    `alteradoManualmente` que trava o item contra ações em massa feitas
+//    no cabeçalho (se o almoxarife mexeu manualmente naquele item
+//    específico, uma ação "aprovar tudo" no pedido não sobrescreve ele).
+//
+// 3. Solicitacao agora aceita solicitante de duas formas (nunca as duas):
+//      - solicitanteUserId  -> usuário logado
+//      - pessoaAtendidaId   -> pessoa cadastrada pelo almoxarife,
+//                              selecionada via autocomplete no formulário
+//                              público (sem texto livre, pra não duplicar
+//                              "João" e "joão" nos relatórios)
+//    O campo `origem` (AUTENTICADO | PUBLICO) deixa explícito qual dos
+//    dois está preenchido.
+//
+// 4. MovimentacaoEstoque e Emprestimo agora apontam pro ITEM da
+//    requisição (itemSolicitacaoId), não mais pro cabeçalho — já que um
+//    pedido pode ter vários materiais, cada um gerando sua própria
+//    movimentação/empréstimo quando entregue.
+//
+// 5. StatusSolicitacao foi reduzido pra ser só o status AGREGADO do
+//    cabeçalho (calculado, não editado diretamente). O detalhe real do
+//    fluxo (aprovação, preparo, entrega, rejeição) mora no
+//    StatusItemSolicitacao, por item.
+//
 // =====================================================================
 
 generator client {
@@ -46,18 +79,34 @@ enum TipoSolicitacao {
   TRANSFERENCIA
 }
 
+// Status AGREGADO do cabeçalho — calculado a partir do status dos itens.
+// Nunca é setado manualmente numa ação de item; só recalculado depois de
+// cada mudança (ver src/lib/requisicoes-helpers.ts -> calcularStatusAgregado).
 enum StatusSolicitacao {
-  RASCUNHO
   PENDENTE
+  AGUARDANDO_APROVACAO
+  EM_ANDAMENTO
+  PRONTO
+  ENTREGUE
+  CANCELADA
+}
+
+// Status de cada ITEM dentro da requisição — é aqui que o fluxo de
+// verdade acontece.
+enum StatusItemSolicitacao {
+  PENDENTE
+  AGUARDANDO_APROVACAO_SUPERIOR
+  APROVADO
+  REJEITADO
   EM_PREPARACAO
   PRONTO
   ENTREGUE
-  APROVADA
-  REJEITADA
-  CANCELADA
-  AGENDADA
-  EM_ANDAMENTO
-  FINALIZADA
+  CANCELADO
+}
+
+enum OrigemSolicitacao {
+  AUTENTICADO
+  PUBLICO
 }
 
 enum Prioridade {
@@ -118,6 +167,7 @@ enum NotificacaoTipo {
   SOLICITACAO_PRONTA
   SOLICITACAO_ENTREGUE
   SOLICITACAO_CANCELADA
+  ITEM_REQUER_APROVACAO_SUPERIOR
   AGENDAMENTO_CONFIRMADO
   EMPRESTIMO_ATRASADO
   PEDIDO_COMPRA_ATUALIZADO
@@ -170,9 +220,14 @@ model User {
 
   materiaisCadastrados   Material[]             @relation("MaterialCriadoPor")
   movimentacoes          MovimentacaoEstoque[]  @relation("MovimentacaoUsuario")
+
   solicitacoesCriadas    Solicitacao[]          @relation("SolicitacaoCriadaPor")
-  solicitacoesAprovadas  Solicitacao[]          @relation("SolicitacaoAprovadaPor")
-  solicitacoesPreparadas Solicitacao[]          @relation("SolicitacaoPreparadaPor")
+  solicitacoesLancadas   Solicitacao[]          @relation("SolicitacaoLancadaPor")
+
+  itensAprovados         ItemSolicitacao[]      @relation("ItemSolicitacaoAprovadoPor")
+  itensPreparados        ItemSolicitacao[]      @relation("ItemSolicitacaoPreparadoPor")
+  itensEntregues         ItemSolicitacao[]      @relation("ItemSolicitacaoEntreguePor")
+
   emprestimosResponsavel Emprestimo[]           @relation("EmprestimoResponsavel")
   emprestimosAprovados   Emprestimo[]           @relation("EmprestimoAprovadoPor")
   logsAuditoria          LogAuditoria[]
@@ -262,7 +317,7 @@ model Material {
   updatedAt DateTime @updatedAt
 
   movimentacoes     MovimentacaoEstoque[]
-  solicitacoes      Solicitacao[]
+  itensSolicitacao  ItemSolicitacao[]
   emprestimos       Emprestimo[]
   itensPedidoCompra ItemPedidoCompra[]
 
@@ -274,6 +329,8 @@ model Material {
 
 // =====================================================================
 // PESSOA ATENDIDA - registro leve de pessoas atendidas pelo almoxarifado
+// (fonte única de nome/setor/função pro formulário público — evita
+// duplicidade tipo "João" vs "joão" nos relatórios)
 // =====================================================================
 
 model PessoaAtendida {
@@ -283,6 +340,8 @@ model PessoaAtendida {
   funcao  String
 
   createdAt DateTime @default(now())
+
+  solicitacoes Solicitacao[]
 
   @@index([nome])
   @@index([setor])
@@ -314,8 +373,10 @@ model MovimentacaoEstoque {
   usuarioId String
   usuario   User   @relation("MovimentacaoUsuario", fields: [usuarioId], references: [id])
 
-  solicitacaoId String?      @unique
-  solicitacao   Solicitacao? @relation(fields: [solicitacaoId], references: [id])
+  // Aponta pro ITEM da requisição (não mais pro cabeçalho) — um pedido
+  // pode ter N materiais, cada um com sua própria movimentação.
+  itemSolicitacaoId String?          @unique
+  itemSolicitacao   ItemSolicitacao? @relation(fields: [itemSolicitacaoId], references: [id])
 
   emprestimoId String?
   emprestimo   Emprestimo? @relation(fields: [emprestimoId], references: [id])
@@ -336,63 +397,116 @@ model MovimentacaoEstoque {
 }
 
 // =====================================================================
-// SOLICITAÇÕES
+// REQUISIÇÕES (cabeçalho do pedido)
 // =====================================================================
 
 model Solicitacao {
-  id String @id @default(cuid())
+  id     String @id @default(cuid())
+  numero Int    @unique @default(autoincrement())
 
-  tipo TipoSolicitacao
+  // Aplica-se a TODOS os itens do pedido (um pedido é de um tipo só).
+  tipo   TipoSolicitacao
+  origem OrigemSolicitacao @default(AUTENTICADO)
 
-  materialId String
-  material   Material @relation(fields: [materialId], references: [id])
+  // Exatamente um dos dois preenchido — validado na API, não no schema.
+  solicitanteUserId String?
+  solicitanteUser   User?   @relation("SolicitacaoCriadaPor", fields: [solicitanteUserId], references: [id])
 
-  quantidade Decimal @db.Decimal(12, 3)
-  motivo     String?
+  pessoaAtendidaId String?
+  pessoaAtendida   PessoaAtendida? @relation(fields: [pessoaAtendidaId], references: [id])
 
+  // Preenchido só quando um membro da equipe (ALMOXARIFE+) lança a
+  // requisição NO LUGAR de quem pediu (pedido recebido por WhatsApp,
+  // e-mail, telefone etc.) — nesse caso pessoaAtendidaId é quem pediu de
+  // fato, e lancadoPorId é quem digitou o pedido no sistema. Fica nulo
+  // quando a pessoa lança pra si mesma (autenticado) ou usa o formulário
+  // público (aí ninguém da equipe "lançou", foi a própria pessoa).
+  lancadoPorId String?
+  lancadoPor   User?   @relation("SolicitacaoLancadaPor", fields: [lancadoPorId], references: [id])
+
+  // Status AGREGADO — recalculado a cada mudança de item, nunca setado à mão.
   status     StatusSolicitacao @default(PENDENTE)
   prioridade Prioridade        @default(MEDIA)
 
-  dataDesejada DateTime?
-  dataLimite   DateTime?
-  dataPreparo  DateTime?
-  dataPronto   DateTime?
-  dataEntrega  DateTime?
+  motivo               String?
+  observacoesInternas  String?
+  anexos               Json?
 
-  observacoesInternas String?
-  anexos              Json?
-
-  solicitanteId String
-  solicitante   User   @relation("SolicitacaoCriadaPor", fields: [solicitanteId], references: [id])
-
-  aprovadorId          String?
-  aprovador            User?     @relation("SolicitacaoAprovadaPor", fields: [aprovadorId], references: [id])
-  observacaoAprovacao  String?
-  dataAprovacao        DateTime?
-
-  preparadorId      String?
-  preparador        User?     @relation("SolicitacaoPreparadaPor", fields: [preparadorId], references: [id])
-  observacaoPreparo String?
-  dataInicioPreparo DateTime?
-  dataFimPreparo    DateTime?
+  // Prazo máximo aceitável pra atender o pedido (substituiu o antigo
+  // campo "data desejada" — mais direto pro almoxarife priorizar).
+  dataLimite DateTime?
 
   agendamentoId String?      @unique
   agendamento   Agendamento?
 
-  movimentacao MovimentacaoEstoque?
-  emprestimo   Emprestimo?
-
-  historicoStatus Json?
+  itens ItemSolicitacao[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
-  @@index([materialId])
   @@index([tipo])
+  @@index([origem])
   @@index([prioridade])
-  @@index([solicitanteId])
-  @@index([dataDesejada])
+  @@index([solicitanteUserId])
+  @@index([pessoaAtendidaId])
+  @@index([lancadoPorId])
+  @@index([numero])
+}
+
+// =====================================================================
+// ITEM DA REQUISIÇÃO — uma linha por material, com fluxo próprio
+// =====================================================================
+
+model ItemSolicitacao {
+  id String @id @default(cuid())
+
+  solicitacaoId String
+  solicitacao   Solicitacao @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
+
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id])
+
+  quantidade Decimal @db.Decimal(12, 3)
+
+  status StatusItemSolicitacao @default(PENDENTE)
+
+  // Copiado de Material.requerAprovacao NO MOMENTO da criação do item —
+  // preserva o histórico mesmo se o material mudar essa flag depois.
+  requerAprovacaoSuperior Boolean @default(false)
+
+  // Trava contra ações em massa feitas no cabeçalho: se true, uma ação
+  // "aplicar a todos" no pedido pula esse item.
+  alteradoManualmente Boolean @default(false)
+
+  aprovadorId    String?
+  aprovador      User?     @relation("ItemSolicitacaoAprovadoPor", fields: [aprovadorId], references: [id])
+  dataAprovacao  DateTime?
+  motivoRejeicao String?
+
+  preparadorId      String?
+  preparador        User?     @relation("ItemSolicitacaoPreparadoPor", fields: [preparadorId], references: [id])
+  dataInicioPreparo DateTime?
+  dataFimPreparo    DateTime?
+
+  dataEntrega   DateTime?
+  entreguePorId String?
+  entreguePor   User?     @relation("ItemSolicitacaoEntreguePor", fields: [entreguePorId], references: [id])
+
+  // Só relevante quando solicitacao.tipo == EMPRESTIMO.
+  dataPrevistaDevolucao DateTime?
+
+  observacao String?
+
+  movimentacao MovimentacaoEstoque?
+  emprestimo   Emprestimo?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([solicitacaoId])
+  @@index([materialId])
+  @@index([status])
 }
 
 // =====================================================================
@@ -441,8 +555,8 @@ model Emprestimo {
 
   quantidade Decimal @db.Decimal(12, 3)
 
-  solicitanteNome  String
-  solicitanteSetor String?
+  solicitanteNome   String
+  solicitanteSetor  String?
   solicitanteFuncao String?
 
   loteId String?
@@ -464,8 +578,11 @@ model Emprestimo {
   responsavelId String
   responsavel   User   @relation("EmprestimoResponsavel", fields: [responsavelId], references: [id])
 
-  solicitacaoId String?      @unique
-  solicitacao   Solicitacao? @relation(fields: [solicitacaoId], references: [id])
+  // Aponta pro ITEM da requisição que originou o empréstimo (quando veio
+  // do fluxo de Requisições). Pode ser nulo — empréstimo avulso continua
+  // possível, criado direto pela rota /api/emprestimos existente.
+  itemSolicitacaoId String?          @unique
+  itemSolicitacao   ItemSolicitacao? @relation(fields: [itemSolicitacaoId], references: [id])
 
   movimentacoes MovimentacaoEstoque[]
 
@@ -585,7 +702,7 @@ model Notificacao {
 model StatusHistory {
   id String @id @default(cuid())
 
-  entidade   String
+  entidade   String // "Solicitacao" | "ItemSolicitacao"
   entidadeId String
 
   statusAnterior String?

@@ -20,6 +20,8 @@ import {
   AlertTriangle,
   Lock,
   User as UserIcon,
+  LogOut,
+  LogOut as LogOutIcon, // <-- RENOMEADO PARA EVITAR CONFLITO
 } from "lucide-react"
 import { formatarTelefone } from "@/lib/telefone-mask"
 
@@ -98,6 +100,10 @@ interface ModalPerfilProps {
    * de negócio — quem sabe é o Prisma, via /api/perfil).
    */
   onProfileUpdated?: () => void
+  /**
+   * Função de logout passada pelo Sidebar
+   */
+  onLogout?: () => void
 }
 
 // =====================================================================
@@ -380,13 +386,24 @@ const SkeletonLinha = styled.div`
 
 const ModalActions = styled.div`
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   gap: ${({ theme }) => theme.spacing[3]};
   padding-top: ${({ theme }) => theme.spacing[3]};
   border-top: 1px solid ${({ theme }) => theme.colors.surface.border};
 `
 
-const ActionButton = styled.button<{ $variant: "primary" | "ghost" }>`
+const ActionsLeft = styled.div`
+  display: flex;
+  gap: ${({ theme }) => theme.spacing[2]};
+`
+
+const ActionsRight = styled.div`
+  display: flex;
+  gap: ${({ theme }) => theme.spacing[3]};
+`
+
+const ActionButton = styled.button<{ $variant: "primary" | "ghost" | "danger" }>`
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -394,6 +411,7 @@ const ActionButton = styled.button<{ $variant: "primary" | "ghost" }>`
   border-radius: ${({ theme }) => theme.radii.md};
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
   font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+  transition: all ${({ theme }) => theme.transitions.fast};
 
   ${({ $variant, theme }) =>
     $variant === "primary" &&
@@ -402,6 +420,7 @@ const ActionButton = styled.button<{ $variant: "primary" | "ghost" }>`
     color: ${theme.colors.neutral.white};
     &:hover:not(:disabled) { background: ${theme.colors.primary.deep}; }
   `}
+  
   ${({ $variant, theme }) =>
     $variant === "ghost" &&
     `
@@ -409,6 +428,18 @@ const ActionButton = styled.button<{ $variant: "primary" | "ghost" }>`
     color: ${theme.colors.text.secondary};
     border: 1px solid ${theme.colors.surface.border};
     &:hover:not(:disabled) { background: ${theme.colors.surface.glass}; color: ${theme.colors.text.primary}; }
+  `}
+  
+  ${({ $variant, theme }) =>
+    $variant === "danger" &&
+    `
+    background: ${theme.colors.status.errorBg};
+    color: ${theme.colors.status.error};
+    border: 1px solid ${theme.colors.status.errorBorder};
+    &:hover:not(:disabled) { 
+      background: ${theme.colors.status.error};
+      color: ${theme.colors.neutral.white};
+    }
   `}
 
   &:disabled {
@@ -421,10 +452,103 @@ const ActionButton = styled.button<{ $variant: "primary" | "ghost" }>`
 `
 
 // =====================================================================
-// COMPONENTE
+// MODAL DE CONFIRMAÇÃO DE LOGOUT
 // =====================================================================
 
-export default function ModalPerfil({ onClose }: ModalPerfilProps) {
+const ConfirmOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: ${({ theme }) => theme.zIndex.modal + 1};
+  padding: ${({ theme }) => theme.spacing[4]};
+  animation: ${fadeIn} 0.15s ease both;
+`
+
+const ConfirmCard = styled.div`
+  ${glassCardStyles}
+  width: 100%;
+  max-width: 400px;
+  padding: ${({ theme }) => theme.spacing[6]};
+  display: flex;
+  flex-direction: column;
+  gap: ${({ theme }) => theme.spacing[4]};
+  animation: ${slideIn} 0.2s ease both;
+`
+
+const ConfirmTitle = styled.h3`
+  font-size: ${({ theme }) => theme.typography.fontSize.lg};
+  color: ${({ theme }) => theme.colors.text.primary};
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing[2]};
+`
+
+const ConfirmMessage = styled.p`
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  color: ${({ theme }) => theme.colors.text.secondary};
+  line-height: 1.6;
+`
+
+const ConfirmActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: ${({ theme }) => theme.spacing[3]};
+  padding-top: ${({ theme }) => theme.spacing[3]};
+  border-top: 1px solid ${({ theme }) => theme.colors.surface.border};
+`
+
+const ConfirmButton = styled.button<{ $variant: "danger" | "ghost" }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: ${({ theme }) => `${theme.spacing[2]} ${theme.spacing[5]}`};
+  border-radius: ${({ theme }) => theme.radii.md};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+  transition: all ${({ theme }) => theme.transitions.fast};
+
+  ${({ $variant, theme }) =>
+    $variant === "danger" &&
+    `
+    background: ${theme.colors.status.error};
+    color: ${theme.colors.neutral.white};
+    &:hover:not(:disabled) { 
+      background: ${theme.colors.status.error};
+      transform: scale(1.02);
+    }
+  `}
+  
+  ${({ $variant, theme }) =>
+    $variant === "ghost" &&
+    `
+    background: transparent;
+    color: ${theme.colors.text.secondary};
+    border: 1px solid ${theme.colors.surface.border};
+    &:hover:not(:disabled) { 
+      background: ${theme.colors.surface.glass}; 
+      color: ${theme.colors.text.primary};
+    }
+  `}
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`
+
+// =====================================================================
+// COMPONENTE PRINCIPAL
+// =====================================================================
+
+export default function ModalPerfil({ 
+  onClose, 
+  onProfileUpdated,
+  onLogout
+}: ModalPerfilProps) {
   const router = useRouter()
 
   const [perfil, setPerfil] = useState<PerfilUsuario | null>(null)
@@ -451,6 +575,10 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
   const [sucesso, setSucesso] = useState<string | null>(null)
   const [sucessoSenha, setSucessoSenha] = useState<string | null>(null)
   const [errosCampo, setErrosCampo] = useState<Record<string, string>>({})
+  
+  // Estado para o modal de confirmação de logout
+  const [mostrarConfirmLogout, setMostrarConfirmLogout] = useState(false)
+  const [saindo, setSaindo] = useState(false)
 
   // Carrega perfil
   useEffect(() => {
@@ -546,6 +674,36 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
     return Object.keys(erros).length === 0
   }
 
+  // Função que abre o modal de confirmação de logout
+  const handleAbrirConfirmLogout = useCallback(() => {
+    setMostrarConfirmLogout(true)
+  }, [])
+
+  // Função que confirma o logout
+  const handleConfirmLogout = useCallback(async () => {
+    if (!onLogout) return
+    
+    setSaindo(true)
+    try {
+      // Fecha o modal de confirmação
+      setMostrarConfirmLogout(false)
+      // Fecha o modal de perfil
+      setFechando(true)
+      // Chama o logout do Sidebar
+      await onLogout()
+    } catch (error) {
+      console.error("Erro ao fazer logout:", error)
+      setSaindo(false)
+      setFechando(false)
+      setErroGeral("Erro ao fazer logout. Tente novamente.")
+    }
+  }, [onLogout])
+
+  // Função que cancela o logout
+  const handleCancelLogout = useCallback(() => {
+    setMostrarConfirmLogout(false)
+  }, [])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setErroGeral(null)
@@ -607,6 +765,11 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
       }
       setSucesso("✅ Perfil atualizado com sucesso!")
 
+      // Notifica o Sidebar que o perfil foi atualizado
+      if (onProfileUpdated) {
+        onProfileUpdated()
+      }
+
       // Fecha o modal automaticamente após 2 segundos
       setFechando(true)
       setTimeout(() => {
@@ -621,199 +784,261 @@ export default function ModalPerfil({ onClose }: ModalPerfilProps) {
     }
   }
 
-  const bloqueado = salvando || carregando || fechando
+  const bloqueado = salvando || carregando || fechando || saindo
   const previewExibido = avatarPreviewUrl ?? (!avatarRemovido ? avatarUrlAtual : null)
 
   return (
-    <ModalOverlay $fechando={fechando} onClick={() => !bloqueado && onClose()}>
-      <ModalCard onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit}>
-        <ModalTopo>
-          <ModalTitle>Meu perfil</ModalTitle>
-          <FecharButton type="button" onClick={onClose} disabled={bloqueado} title="Fechar">
-            <X size={18} />
-          </FecharButton>
-        </ModalTopo>
+    <>
+      <ModalOverlay $fechando={fechando} onClick={() => !bloqueado && onClose()}>
+        <ModalCard onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit}>
+          <ModalTopo>
+            <ModalTitle>Meu perfil</ModalTitle>
+            <FecharButton type="button" onClick={onClose} disabled={bloqueado} title="Fechar">
+              <X size={18} />
+            </FecharButton>
+          </ModalTopo>
 
-        {erroGeral && (
-          <AvisoErro>
-            <AlertTriangle size={16} />
-            <span>{erroGeral}</span>
-          </AvisoErro>
-        )}
+          {erroGeral && (
+            <AvisoErro>
+              <AlertTriangle size={16} />
+              <span>{erroGeral}</span>
+            </AvisoErro>
+          )}
 
-        {sucesso && (
-          <AvisoSucesso>
-            <Check size={16} />
-            <span>{sucesso}</span>
-          </AvisoSucesso>
-        )}
+          {sucesso && (
+            <AvisoSucesso>
+              <Check size={16} />
+              <span>{sucesso}</span>
+            </AvisoSucesso>
+          )}
 
-        {sucessoSenha && (
-          <AvisoSucesso>
-            <Check size={16} />
-            <span>{sucessoSenha}</span>
-          </AvisoSucesso>
-        )}
+          {sucessoSenha && (
+            <AvisoSucesso>
+              <Check size={16} />
+              <span>{sucessoSenha}</span>
+            </AvisoSucesso>
+          )}
 
-        {fechando && (
-          <AvisoInfo>
-            <Loader2 size={16} className="spin" />
-            <span>Redirecionando...</span>
-          </AvisoInfo>
-        )}
+          {fechando && (
+            <AvisoInfo>
+              <Loader2 size={16} className="spin" />
+              <span>Redirecionando...</span>
+            </AvisoInfo>
+          )}
 
-        {carregando ? (
-          <>
-            <SkeletonLinha style={{ height: 88, width: 88, borderRadius: "50%", margin: "0 auto" }} />
-            <SkeletonLinha />
-            <SkeletonLinha />
-          </>
-        ) : (
-          <>
-            <AvatarSecao>
-              <AvatarPreviewWrapper
-                type="button"
-                onClick={() => inputAvatarRef.current?.click()}
-                disabled={processandoAvatar || bloqueado}
-              >
-                {processandoAvatar ? (
-                  <Loader2 size={20} className="spin" />
-                ) : previewExibido ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={previewExibido} alt="Avatar" />
-                ) : perfil ? (
-                  getInitials(perfil.nome, perfil.sobrenome)
+          {carregando ? (
+            <>
+              <SkeletonLinha style={{ height: 88, width: 88, borderRadius: "50%", margin: "0 auto" }} />
+              <SkeletonLinha />
+              <SkeletonLinha />
+            </>
+          ) : (
+            <>
+              <AvatarSecao>
+                <AvatarPreviewWrapper
+                  type="button"
+                  onClick={() => inputAvatarRef.current?.click()}
+                  disabled={processandoAvatar || bloqueado}
+                >
+                  {processandoAvatar ? (
+                    <Loader2 size={20} className="spin" />
+                  ) : previewExibido ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={previewExibido} alt="Avatar" />
+                  ) : perfil ? (
+                    getInitials(perfil.nome, perfil.sobrenome)
+                  ) : (
+                    <UserIcon size={28} />
+                  )}
+                  <AvatarOverlayHover>
+                    <Camera size={20} color="#fff" />
+                  </AvatarOverlayHover>
+                </AvatarPreviewWrapper>
+
+                <InputFileOculto
+                  ref={inputAvatarRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleSelecionarAvatar}
+                  disabled={bloqueado}
+                />
+
+                {previewExibido ? (
+                  <ActionButton type="button" $variant="ghost" onClick={removerAvatar} disabled={bloqueado} style={{ padding: "4px 10px" }}>
+                    Remover foto
+                  </ActionButton>
                 ) : (
-                  <UserIcon size={28} />
+                  <AvatarInfoTexto>Clique no avatar pra adicionar uma foto</AvatarInfoTexto>
                 )}
-                <AvatarOverlayHover>
-                  <Camera size={20} color="#fff" />
-                </AvatarOverlayHover>
-              </AvatarPreviewWrapper>
+              </AvatarSecao>
 
-              <InputFileOculto
-                ref={inputAvatarRef}
-                type="file"
-                accept="image/*"
-                onChange={handleSelecionarAvatar}
-                disabled={bloqueado}
-              />
+              <Secao>
+                <SecaoTitulo>Dados pessoais</SecaoTitulo>
 
-              {previewExibido ? (
-                <ActionButton type="button" $variant="ghost" onClick={removerAvatar} disabled={bloqueado} style={{ padding: "4px 10px" }}>
-                  Remover foto
+                <Grid2>
+                  <FieldGroup>
+                    <Label htmlFor="nome">Nome</Label>
+                    <Input
+                      id="nome"
+                      value={nome}
+                      onChange={(e) => setNome(e.target.value)}
+                      maxLength={60}
+                      disabled={bloqueado}
+                    />
+                    {errosCampo.nome && <ErrorText>{errosCampo.nome}</ErrorText>}
+                  </FieldGroup>
+                  <FieldGroup>
+                    <Label htmlFor="sobrenome">Sobrenome</Label>
+                    <Input
+                      id="sobrenome"
+                      value={sobrenome}
+                      onChange={(e) => setSobrenome(e.target.value)}
+                      maxLength={60}
+                      disabled={bloqueado}
+                    />
+                    {errosCampo.sobrenome && <ErrorText>{errosCampo.sobrenome}</ErrorText>}
+                  </FieldGroup>
+                </Grid2>
+
+                <FieldGroup>
+                  <Label htmlFor="telefone">Telefone</Label>
+                  <Input
+                    id="telefone"
+                    placeholder="(00) 0 0000-0000"
+                    value={telefone}
+                    onChange={(e) => setTelefone(formatarTelefone(e.target.value))}
+                    inputMode="numeric"
+                    maxLength={17}
+                    disabled={bloqueado}
+                  />
+                </FieldGroup>
+
+                <FieldGroup>
+                  <Label htmlFor="email">E-mail</Label>
+                  <InputSomenteLeitura id="email" value={perfil?.email ?? ""} disabled readOnly />
+                </FieldGroup>
+              </Secao>
+
+              <Secao>
+                <SecaoTitulo>
+                  <Lock size={12} style={{ display: "inline", marginRight: 4 }} />
+                  Trocar senha (opcional)
+                </SecaoTitulo>
+
+                <FieldGroup>
+                  <Label htmlFor="senhaAtual">Senha atual</Label>
+                  <Input
+                    id="senhaAtual"
+                    type="password"
+                    value={senhaAtual}
+                    onChange={(e) => setSenhaAtual(e.target.value)}
+                    disabled={bloqueado}
+                    autoComplete="current-password"
+                  />
+                  {errosCampo.senhaAtual && <ErrorText>{errosCampo.senhaAtual}</ErrorText>}
+                </FieldGroup>
+
+                <Grid2>
+                  <FieldGroup>
+                    <Label htmlFor="novaSenha">Nova senha</Label>
+                    <Input
+                      id="novaSenha"
+                      type="password"
+                      value={novaSenha}
+                      onChange={(e) => setNovaSenha(e.target.value)}
+                      disabled={bloqueado}
+                      autoComplete="new-password"
+                    />
+                    {errosCampo.novaSenha && <ErrorText>{errosCampo.novaSenha}</ErrorText>}
+                  </FieldGroup>
+                  <FieldGroup>
+                    <Label htmlFor="confirmarNovaSenha">Confirmar nova senha</Label>
+                    <Input
+                      id="confirmarNovaSenha"
+                      type="password"
+                      value={confirmarNovaSenha}
+                      onChange={(e) => setConfirmarNovaSenha(e.target.value)}
+                      disabled={bloqueado}
+                      autoComplete="new-password"
+                    />
+                    {errosCampo.confirmarNovaSenha && <ErrorText>{errosCampo.confirmarNovaSenha}</ErrorText>}
+                  </FieldGroup>
+                </Grid2>
+              </Secao>
+            </>
+          )}
+
+          <ModalActions>
+            <ActionsLeft>
+              {onLogout && (
+                <ActionButton 
+                  type="button" 
+                  $variant="danger" 
+                  disabled={bloqueado}
+                  onClick={handleAbrirConfirmLogout}
+                >
+                  <LogOut size={14} />
+                  Sair
                 </ActionButton>
-              ) : (
-                <AvatarInfoTexto>Clique no avatar pra adicionar uma foto</AvatarInfoTexto>
               )}
-            </AvatarSecao>
+            </ActionsLeft>
+            
+            <ActionsRight>
+              <ActionButton type="button" $variant="ghost" disabled={bloqueado} onClick={onClose}>
+                Cancelar
+              </ActionButton>
+              <ActionButton type="submit" $variant="primary" disabled={bloqueado || processandoAvatar}>
+                {salvando ? <Loader2 size={14} className="spin" /> : <Check size={14} />}
+                Salvar alterações
+              </ActionButton>
+            </ActionsRight>
+          </ModalActions>
+        </ModalCard>
+      </ModalOverlay>
 
-            <Secao>
-              <SecaoTitulo>Dados pessoais</SecaoTitulo>
-
-              <Grid2>
-                <FieldGroup>
-                  <Label htmlFor="nome">Nome</Label>
-                  <Input
-                    id="nome"
-                    value={nome}
-                    onChange={(e) => setNome(e.target.value)}
-                    maxLength={60}
-                    disabled={bloqueado}
-                  />
-                  {errosCampo.nome && <ErrorText>{errosCampo.nome}</ErrorText>}
-                </FieldGroup>
-                <FieldGroup>
-                  <Label htmlFor="sobrenome">Sobrenome</Label>
-                  <Input
-                    id="sobrenome"
-                    value={sobrenome}
-                    onChange={(e) => setSobrenome(e.target.value)}
-                    maxLength={60}
-                    disabled={bloqueado}
-                  />
-                  {errosCampo.sobrenome && <ErrorText>{errosCampo.sobrenome}</ErrorText>}
-                </FieldGroup>
-              </Grid2>
-
-              <FieldGroup>
-                <Label htmlFor="telefone">Telefone</Label>
-                <Input
-                  id="telefone"
-                  placeholder="(00) 0 0000-0000"
-                  value={telefone}
-                  onChange={(e) => setTelefone(formatarTelefone(e.target.value))}
-                  inputMode="numeric"
-                  maxLength={17}
-                  disabled={bloqueado}
-                />
-              </FieldGroup>
-
-              <FieldGroup>
-                <Label htmlFor="email">E-mail</Label>
-                <InputSomenteLeitura id="email" value={perfil?.email ?? ""} disabled readOnly />
-              </FieldGroup>
-            </Secao>
-
-            <Secao>
-              <SecaoTitulo>
-                <Lock size={12} style={{ display: "inline", marginRight: 4 }} />
-                Trocar senha (opcional)
-              </SecaoTitulo>
-
-              <FieldGroup>
-                <Label htmlFor="senhaAtual">Senha atual</Label>
-                <Input
-                  id="senhaAtual"
-                  type="password"
-                  value={senhaAtual}
-                  onChange={(e) => setSenhaAtual(e.target.value)}
-                  disabled={bloqueado}
-                  autoComplete="current-password"
-                />
-                {errosCampo.senhaAtual && <ErrorText>{errosCampo.senhaAtual}</ErrorText>}
-              </FieldGroup>
-
-              <Grid2>
-                <FieldGroup>
-                  <Label htmlFor="novaSenha">Nova senha</Label>
-                  <Input
-                    id="novaSenha"
-                    type="password"
-                    value={novaSenha}
-                    onChange={(e) => setNovaSenha(e.target.value)}
-                    disabled={bloqueado}
-                    autoComplete="new-password"
-                  />
-                  {errosCampo.novaSenha && <ErrorText>{errosCampo.novaSenha}</ErrorText>}
-                </FieldGroup>
-                <FieldGroup>
-                  <Label htmlFor="confirmarNovaSenha">Confirmar nova senha</Label>
-                  <Input
-                    id="confirmarNovaSenha"
-                    type="password"
-                    value={confirmarNovaSenha}
-                    onChange={(e) => setConfirmarNovaSenha(e.target.value)}
-                    disabled={bloqueado}
-                    autoComplete="new-password"
-                  />
-                  {errosCampo.confirmarNovaSenha && <ErrorText>{errosCampo.confirmarNovaSenha}</ErrorText>}
-                </FieldGroup>
-              </Grid2>
-            </Secao>
-          </>
-        )}
-
-        <ModalActions>
-          <ActionButton type="button" $variant="ghost" disabled={bloqueado} onClick={onClose}>
-            Cancelar
-          </ActionButton>
-          <ActionButton type="submit" $variant="primary" disabled={bloqueado || processandoAvatar}>
-            {salvando ? <Loader2 size={14} className="spin" /> : <Check size={14} />}
-            Salvar alterações
-          </ActionButton>
-        </ModalActions>
-      </ModalCard>
-    </ModalOverlay>
+      {/* Modal de confirmação de logout */}
+      {mostrarConfirmLogout && (
+        <ConfirmOverlay onClick={handleCancelLogout}>
+          <ConfirmCard onClick={(e) => e.stopPropagation()}>
+            <ConfirmTitle>
+              <AlertTriangle size={20} style={{ color: theme.colors.status.error }} />
+              Confirmar saída
+            </ConfirmTitle>
+            <ConfirmMessage>
+              Tem certeza que deseja sair da sua conta? 
+              Você precisará fazer login novamente para acessar o sistema.
+            </ConfirmMessage>
+            <ConfirmActions>
+              <ConfirmButton 
+                type="button" 
+                $variant="ghost" 
+                onClick={handleCancelLogout}
+                disabled={saindo}
+              >
+                Cancelar
+              </ConfirmButton>
+              <ConfirmButton 
+                type="button" 
+                $variant="danger" 
+                onClick={handleConfirmLogout}
+                disabled={saindo}
+              >
+                {saindo ? (
+                  <>
+                    <Loader2 size={14} className="spin" />
+                    Saindo...
+                  </>
+                ) : (
+                  <>
+                    <LogOutIcon size={14} />
+                    Sair
+                  </>
+                )}
+              </ConfirmButton>
+            </ConfirmActions>
+          </ConfirmCard>
+        </ConfirmOverlay>
+      )}
+    </>
   )
 }

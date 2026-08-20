@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-const ROTAS_PUBLICAS = ["/", "/login", "/cadastro"]
+const ROTAS_PUBLICAS = ["/", "/login", "/cadastro", "/solicitar"]
 const ROTAS_REDIRECIONAM_LOGADO = ["/login", "/cadastro"]
 
 export async function proxy(request: NextRequest) {
