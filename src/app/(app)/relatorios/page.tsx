@@ -32,6 +32,7 @@ import FiltroPeriodo, {
   type ValorPeriodo,
 } from "@/components/relatorios/filtro-periodo"
 import ExportarRelatorioButton from "@/components/relatorios/exportar-button"
+import PessoasEstoque from "@/components/relatorios/pessoas-estoque"
 import {
   GraficoEntradasSaidas,
   GraficoEvolucao,
@@ -43,7 +44,8 @@ import type {
   Granularidade,
   MaterialMovimentadoRow,
   CategoriaMovimentadaRow,
-} from "@/lib/relatorios"
+} from "@/lib/exportacoes/relatorios/relatorios"
+import type { EstoquePessoaRow } from "@/lib/exportacoes/relatorios/relatorios-shared"
 
 // =====================================================================
 // TIPOS
@@ -71,9 +73,15 @@ interface RespostaRelatorio {
     estoqueBaixo: number
     estoqueAlto: number
   }
+  pessoas: EstoquePessoaRow[]
 }
 
 interface CategoriaOption {
+  id: string
+  nome: string
+}
+
+interface PessoaOption {
   id: string
   nome: string
 }
@@ -119,6 +127,7 @@ export default function RelatoriosPage() {
   }))
   const [categoriaId, setCategoriaId] = useState("")
   const [tipoFiltro, setTipoFiltro] = useState<TipoFiltro>("TODOS")
+  const [pessoaFiltro, setPessoaFiltro] = useState("")
   const [erroExportacao, setErroExportacao] = useState<string | null>(null)
 
   const validacao = validarPeriodo(periodo.dataInicio, periodo.dataFim)
@@ -138,10 +147,31 @@ export default function RelatoriosPage() {
   })
 
   // ---------------------------------------------------------------
+  // Pessoas atendidas pro filtro (cadastro leve feito em Categorias)
+  // ---------------------------------------------------------------
+  const pessoasQuery = useQuery({
+    queryKey: ["pessoas-atendidas", "filtro"],
+    queryFn: async (): Promise<PessoaOption[]> => {
+      const res = await fetch("/api/pessoas-atendidas")
+      if (!res.ok) throw new Error("Falha ao carregar pessoas")
+      const data = await res.json()
+      return data.pessoas as PessoaOption[]
+    },
+    staleTime: 1000 * 60 * 5,
+  })
+
+  // ---------------------------------------------------------------
   // Dados agregados do relatório — um único request por combinação de filtros
   // ---------------------------------------------------------------
   const relatorioQuery = useQuery({
-    queryKey: ["relatorios", periodo.dataInicio, periodo.dataFim, categoriaId, tipoFiltro],
+    queryKey: [
+      "relatorios",
+      periodo.dataInicio,
+      periodo.dataFim,
+      categoriaId,
+      tipoFiltro,
+      pessoaFiltro,
+    ],
     queryFn: async (): Promise<RespostaRelatorio> => {
       const params = new URLSearchParams({
         dataInicio: periodo.dataInicio,
@@ -149,6 +179,7 @@ export default function RelatoriosPage() {
       })
       if (categoriaId) params.set("categoriaId", categoriaId)
       if (tipoFiltro !== "TODOS") params.set("tipo", tipoFiltro)
+      if (pessoaFiltro) params.set("pessoa", pessoaFiltro)
 
       const res = await fetch(`/api/relatorios?${params.toString()}`)
       if (!res.ok) {
@@ -177,8 +208,9 @@ export default function RelatoriosPage() {
     })
     if (categoriaId) params.set("categoriaId", categoriaId)
     if (tipoFiltro !== "TODOS") params.set("tipo", tipoFiltro)
+    if (pessoaFiltro) params.set("pessoa", pessoaFiltro)
     return params.toString()
-  }, [periodo.dataInicio, periodo.dataFim, categoriaId, tipoFiltro])
+  }, [periodo.dataInicio, periodo.dataFim, categoriaId, tipoFiltro, pessoaFiltro])
 
   function recarregar() {
     relatorioQuery.refetch()
@@ -249,6 +281,19 @@ export default function RelatoriosPage() {
           {(Object.keys(LABEL_TIPO_FILTRO) as TipoFiltro[]).map((tipo) => (
             <option key={tipo} value={tipo}>
               {LABEL_TIPO_FILTRO[tipo]}
+            </option>
+          ))}
+        </SelectFiltro>
+
+        <SelectFiltro
+          aria-label="Filtrar por pessoa"
+          value={pessoaFiltro}
+          onChange={(e) => setPessoaFiltro(e.target.value)}
+        >
+          <option value="">Todas as pessoas</option>
+          {(pessoasQuery.data ?? []).map((p) => (
+            <option key={p.id} value={p.nome}>
+              {p.nome}
             </option>
           ))}
         </SelectFiltro>
@@ -348,6 +393,9 @@ export default function RelatoriosPage() {
               <GraficoCategorias categorias={dados.categorias} />
             </GraficoLargo>
           </GraficosGrid>
+
+          {/* Estoque pessoal por pessoa (quem pegou o quê no período) */}
+          {dados.pessoas.length > 0 && <PessoasEstoque pessoas={dados.pessoas} />}
         </>
       )}
     </PageWrapper>

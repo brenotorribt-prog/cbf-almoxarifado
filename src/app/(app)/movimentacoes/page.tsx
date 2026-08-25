@@ -17,7 +17,7 @@ import styled, { keyframes } from "styled-components"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
 import { theme, hexToRgba } from "@/styles/theme"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import {
   ArrowLeftRight,
   Plus,
@@ -46,7 +46,7 @@ import {
 
 import NovaMovimentacaoModal from "@/components/movimentacoes/modals/nova-movimentacao"
 import NovoEmprestimoModal from "@/components/movimentacoes/modals/novo-emprestimo"
-import { downloadPDF, viewPDF } from "@/lib/pdf-helper"
+import { downloadPDF, viewPDF } from "@/lib/pdf/pdf-helper"
 
 // =====================================================================
 // TIPOS
@@ -108,15 +108,20 @@ interface ResumoEmprestimos {
 
 type AbaAtiva = "historico" | "emprestimos" | "aprovacoes"
 
-type AcaoTipo = "devolver" | "descarte" | "aprovar" | "rejeitar"
+type AcaoTipo = "devolver" | "descarte" | "aprovar" | "rejeitar" | "devolverSaida"
 
 interface AcaoPendente {
   tipo: AcaoTipo
-  emprestimo: EmprestimoRow
+  emprestimo?: EmprestimoRow
+  // Preenchido quando tipo === "devolverSaida" (devolução avulsa de sobrante)
+  movimentacao?: MovimentacaoRow
 }
 
 // Papéis que podem aprovar/rejeitar empréstimos pendentes
 const PAPEIS_APROVADORES = new Set(["ADMIN", "GESTOR", "SUPERVISOR"])
+
+// Papéis que podem registrar devolução avulsa de saída
+const PAPEIS_GESTAO_ESTOQUE = new Set(["ADMIN", "GESTOR", "SUPERVISOR", "ALMOXARIFE"])
 
 // =====================================================================
 // HELPERS
@@ -515,7 +520,7 @@ export default function MovimentacoesPage() {
                   <HeaderCell style={{ width: 110 }}>Quantidade</HeaderCell>
                   <HeaderCell>Motivo</HeaderCell>
                   <HeaderCell style={{ width: 150 }}>Quando / quem</HeaderCell>
-                  <HeaderCell style={{ width: 100, justifyContent: 'flex-end' }}>Ações</HeaderCell>
+                  <HeaderCell style={{ width: 132, justifyContent: 'flex-end' }}>Ações</HeaderCell>
                 </TableHeader>
 
                 <RowsSizer style={{ height: virtualizerHistorico.getTotalSize() }}>
@@ -562,6 +567,23 @@ export default function MovimentacoesPage() {
                           <RowNome style={{ fontSize: theme.typography.fontSize.xs }}>{mov.usuario.name}</RowNome>
                           <RowMeta>{formatarDataHora(mov.createdAt)}</RowMeta>
                         </RowInfo>
+
+                        {/* Devolução de sobrante (só em saídas com solicitante) */}
+                        {mov.tipo === "SAIDA" &&
+                          mov.solicitanteNome &&
+                          PAPEIS_GESTAO_ESTOQUE.has(role) && (
+                            <AcoesLinha style={{ justifyContent: 'flex-end' }}>
+                              <AcaoIconButton
+                                title="Registrar devolução (material não utilizado)"
+                                $cor={theme.colors.status.warning}
+                                onClick={() =>
+                                  setAcaoPendente({ tipo: "devolverSaida", movimentacao: mov })
+                                }
+                              >
+                                <Undo2 size={15} />
+                              </AcaoIconButton>
+                            </AcoesLinha>
+                          )}
 
                         {/* Botões de PDF */}
                         <AcoesLinha style={{ justifyContent: 'flex-end' }}>
@@ -908,27 +930,33 @@ function AcaoModal({
   const CONFIG: Record<AcaoTipo, { titulo: string; endpoint: string; corBotao: string; labelBotao: string }> = {
     devolver: {
       titulo: "Confirmar devolução",
-      endpoint: `/api/emprestimos/${acao.emprestimo.id}/devolucao`,
+      endpoint: `/api/emprestimos/${acao.emprestimo?.id ?? ""}/devolucao`,
       corBotao: theme.colors.status.success,
       labelBotao: "Confirmar devolução",
     },
     descarte: {
       titulo: "Registrar descarte / perda",
-      endpoint: `/api/emprestimos/${acao.emprestimo.id}/descarte`,
+      endpoint: `/api/emprestimos/${acao.emprestimo?.id ?? ""}/descarte`,
       corBotao: theme.colors.status.error,
       labelBotao: "Confirmar descarte",
     },
     aprovar: {
       titulo: "Aprovar empréstimo",
-      endpoint: `/api/emprestimos/${acao.emprestimo.id}/aprovar`,
+      endpoint: `/api/emprestimos/${acao.emprestimo?.id ?? ""}/aprovar`,
       corBotao: theme.colors.status.success,
       labelBotao: "Confirmar aprovação",
     },
     rejeitar: {
       titulo: "Rejeitar empréstimo",
-      endpoint: `/api/emprestimos/${acao.emprestimo.id}/rejeitar`,
+      endpoint: `/api/emprestimos/${acao.emprestimo?.id ?? ""}/rejeitar`,
       corBotao: theme.colors.status.error,
       labelBotao: "Confirmar rejeição",
+    },
+    devolverSaida: {
+      titulo: "Registrar devolução de sobrante",
+      endpoint: `/api/movimentacoes/${acao.movimentacao?.id ?? ""}/devolucao`,
+      corBotao: theme.colors.status.success,
+      labelBotao: "Confirmar devolução",
     },
   }
 
@@ -977,13 +1005,21 @@ function AcaoModal({
           </FecharButton>
         </ModalTopo>
 
-        <ResumoAcaoBox>
-          <strong>{acao.emprestimo.material.nome}</strong>
-          <span>
-            {acao.emprestimo.quantidade} {acao.emprestimo.material.unidadeMedida.sigla} · para{" "}
-            {acao.emprestimo.solicitanteNome}
-          </span>
-        </ResumoAcaoBox>
+        {(() => {
+          const alvo = acao.tipo === "devolverSaida" ? acao.movimentacao : acao.emprestimo
+          if (!alvo) return null
+          const sigla =
+            "unidadeMedida" in alvo.material ? alvo.material.unidadeMedida.sigla : null
+          return (
+            <ResumoAcaoBox>
+              <strong>{alvo.material.nome}</strong>
+              <span>
+                {alvo.quantidade}
+                {sigla ? ` ${sigla}` : ""} · para {alvo.solicitanteNome}
+              </span>
+            </ResumoAcaoBox>
+          )
+        })()}
 
         {erro && (
           <AvisoErro>

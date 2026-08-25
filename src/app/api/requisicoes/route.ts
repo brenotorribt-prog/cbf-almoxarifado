@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/require-role"
-import { criarRequisicao, criarRequisicaoBaseSchema, ErroRequisicao } from "@/lib/criar-requisicao"
-import { podeGerenciarRequisicoes } from "@/lib/requisicoes-helpers"
+import { requireAuth } from "@/lib/auth/require-role"
+import { criarRequisicao, criarRequisicaoBaseSchema, ErroRequisicao } from "@/lib/requisicoes/criar-requisicao"
+import { podeGerenciarRequisicoes } from "@/lib/requisicoes/requisicoes-helpers"
 import { Prioridade, Prisma, StatusSolicitacao, TipoSolicitacao } from "@prisma/client"
 
 const LIMIT_PADRAO = 30
@@ -55,43 +55,48 @@ export async function GET(request: NextRequest) {
     where.numero = { ...(typeof where.numero === "object" ? where.numero : {}), lt: cursor }
   }
 
-  const requisicoes = await prisma.solicitacao.findMany({
-    where,
-    take: limit + 1,
-    orderBy: { numero: "desc" },
-    include: {
-      solicitanteUser: { select: { id: true, name: true, setor: true, cargo: true } },
-      pessoaAtendida: { select: { id: true, nome: true, setor: true, funcao: true } },
-      lancadoPor: { select: { id: true, name: true } },
-      itens: {
-        select: {
-          id: true,
-          status: true,
-          quantidade: true,
-          requerAprovacaoSuperior: true,
-          material: { select: { id: true, nome: true, codigoInterno: true } },
+  // Página + resumo — independentes (o resumo ignora filtros de busca por
+  // design), em paralelo.
+  const [requisicoes, resumoRows] = await Promise.all([
+    prisma.solicitacao.findMany({
+      where,
+      take: limit + 1,
+      orderBy: { numero: "desc" },
+      include: {
+        solicitanteUser: { select: { id: true, name: true, setor: true, cargo: true } },
+        pessoaAtendida: { select: { id: true, nome: true, setor: true, funcao: true } },
+        lancadoPor: { select: { id: true, name: true } },
+        itens: {
+          select: {
+            id: true,
+            status: true,
+            quantidade: true,
+            requerAprovacaoSuperior: true,
+            material: { select: { id: true, nome: true, codigoInterno: true } },
+          },
         },
+        agendamento: { select: { id: true, dataAgendada: true, status: true } },
       },
-      agendamento: { select: { id: true, dataAgendada: true, status: true } },
-    },
-  })
+    }),
+    prisma.$queryRaw<
+      { total: number; pendentes: number; aguardandoAprovacao: number; emAndamento: number; prontos: number }[]
+    >(Prisma.sql`
+      SELECT
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE status = 'PENDENTE')::int as pendentes,
+        COUNT(*) FILTER (WHERE status = 'AGUARDANDO_APROVACAO')::int as "aguardandoAprovacao",
+        COUNT(*) FILTER (WHERE status = 'EM_ANDAMENTO')::int as "emAndamento",
+        COUNT(*) FILTER (WHERE status = 'PRONTO')::int as prontos
+      FROM "Solicitacao"
+      ${!podeGerenciarRequisicoes(usuario.role) ? Prisma.sql`WHERE "solicitanteUserId" = ${usuario.id}` : Prisma.empty}
+    `),
+  ])
 
   const temMais = requisicoes.length > limit
   const pagina = temMais ? requisicoes.slice(0, limit) : requisicoes
   const nextCursor = temMais ? pagina[pagina.length - 1].numero : null
 
-  const [resumo] = await prisma.$queryRaw<
-    { total: number; pendentes: number; aguardandoAprovacao: number; emAndamento: number; prontos: number }[]
-  >(Prisma.sql`
-    SELECT
-      COUNT(*)::int as total,
-      COUNT(*) FILTER (WHERE status = 'PENDENTE')::int as pendentes,
-      COUNT(*) FILTER (WHERE status = 'AGUARDANDO_APROVACAO')::int as "aguardandoAprovacao",
-      COUNT(*) FILTER (WHERE status = 'EM_ANDAMENTO')::int as "emAndamento",
-      COUNT(*) FILTER (WHERE status = 'PRONTO')::int as prontos
-    FROM "Solicitacao"
-    ${!podeGerenciarRequisicoes(usuario.role) ? Prisma.sql`WHERE "solicitanteUserId" = ${usuario.id}` : Prisma.empty}
-  `)
+  const [resumo] = resumoRows
 
   return NextResponse.json({
     requisicoes: pagina.map(mapearRequisicaoResumo),
@@ -153,6 +158,9 @@ export async function POST(request: NextRequest) {
 // mapeamento
 // =====================================================================
 
+// Mapper de borda: recebe o resultado de um include dinâmico do Prisma
+// (shape variável por rota), tipá-lo integralmente custaria mais que o valor.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapearRequisicaoResumo(r: any) {
   return {
     id: r.id,
@@ -171,6 +179,7 @@ function mapearRequisicaoResumo(r: any) {
       ? { tipo: "PESSOA_ATENDIDA" as const, id: r.pessoaAtendida.id, nome: r.pessoaAtendida.nome, setor: r.pessoaAtendida.setor, funcao: r.pessoaAtendida.funcao }
       : null,
     lancadoPor: r.lancadoPor ? { id: r.lancadoPor.id, nome: r.lancadoPor.name } : null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     itens: r.itens.map((i: any) => ({
       id: i.id,
       status: i.status,

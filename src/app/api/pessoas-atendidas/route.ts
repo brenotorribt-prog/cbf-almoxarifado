@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAuth, requireRole } from "@/lib/require-role"
+import { requireAuth, requireRole } from "@/lib/auth/require-role"
 
 // GET /api/pessoas-atendidas?busca=breno — autocomplete pro campo
 // solicitante do pedido de compra.
@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
   const pessoas = await prisma.pessoaAtendida.findMany({
     where: busca ? { nome: { contains: busca, mode: "insensitive" } } : undefined,
     orderBy: { nome: "asc" },
-    take: 15,
+    // Sem busca (ex.: filtro de pessoa nos relatórios) lista mais registros;
+    // com busca é autocomplete e 15 bastam.
+    take: busca ? 15 : 500,
   })
 
   return NextResponse.json({ pessoas })

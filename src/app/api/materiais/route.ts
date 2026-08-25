@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAuth, requireRole } from "@/lib/require-role"
+import { requireAuth, requireRole } from "@/lib/auth/require-role"
 import { Prisma } from "@prisma/client"
-import { gerarCodigoInterno } from "@/lib/codigo-interno"
+import { gerarCodigoInterno } from "@/lib/utils/codigo-interno"
 import { randomUUID } from "crypto"
 
 const LIMIT_PADRAO = 30
@@ -53,39 +53,43 @@ export async function GET(request: NextRequest) {
   const where =
     condicoes.length > 0 ? Prisma.sql`WHERE ${Prisma.join(condicoes, " AND ")}` : Prisma.empty
 
-  const linhas = await prisma.$queryRaw<RowMaterial[]>(Prisma.sql`
-    SELECT
-      m.id, m."numeroSequencial", m."codigoInterno", m."codigoBarras", m."qrCode",
-      m.nome, m.descricao, m.marca, m.fabricante, m.modelo, m."numeroSerie", m.fornecedor,
-      m."estoqueMinimo", m."estoqueIdeal", m."estoqueMaximo", m."estoqueAtual",
-      m."localizacaoFisica", m.situacao, m."fotoUrl", m."requerAprovacao",
-      m."createdAt", m."updatedAt",
-      c.id as "categoriaId", c.nome as "categoriaNome",
-      u.id as "unidadeMedidaId", u.sigla as "unidadeSigla", u.nome as "unidadeNome",
-      cr.id as "criadoPorId", cr.name as "criadoPorNome"
-    FROM "Material" m
-    JOIN "Categoria" c ON c.id = m."categoriaId"
-    JOIN "UnidadeMedida" u ON u.id = m."unidadeMedidaId"
-    JOIN "User" cr ON cr.id = m."criadoPorId"
-    ${where}
-    ORDER BY m."numeroSequencial" ASC
-    LIMIT ${limit + 1}
-  `)
+  // Página + resumo — queries independentes, em paralelo.
+  const [linhas, resumoRows] = await Promise.all([
+    prisma.$queryRaw<RowMaterial[]>(Prisma.sql`
+      SELECT
+        m.id, m."numeroSequencial", m."codigoInterno", m."codigoBarras", m."qrCode",
+        m.nome, m.descricao, m.marca, m.fabricante, m.modelo, m."numeroSerie", m.fornecedor,
+        m."estoqueMinimo", m."estoqueIdeal", m."estoqueMaximo", m."estoqueAtual",
+        m."localizacaoFisica", m.situacao, m."fotoUrl", m."requerAprovacao",
+        m."createdAt", m."updatedAt",
+        c.id as "categoriaId", c.nome as "categoriaNome",
+        u.id as "unidadeMedidaId", u.sigla as "unidadeSigla", u.nome as "unidadeNome",
+        cr.id as "criadoPorId", cr.name as "criadoPorNome"
+      FROM "Material" m
+      JOIN "Categoria" c ON c.id = m."categoriaId"
+      JOIN "UnidadeMedida" u ON u.id = m."unidadeMedidaId"
+      JOIN "User" cr ON cr.id = m."criadoPorId"
+      ${where}
+      ORDER BY m."numeroSequencial" ASC
+      LIMIT ${limit + 1}
+    `),
+    prisma.$queryRaw<ResumoRow[]>(Prisma.sql`
+      SELECT
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE situacao = 'INATIVO')::int as inativos,
+        COUNT(*) FILTER (WHERE "estoqueAtual" < "estoqueMinimo")::int as "estoqueBaixo",
+        COUNT(*) FILTER (WHERE "estoqueAtual" > "estoqueMaximo")::int as "estoqueAlto"
+      FROM "Material"
+    `),
+  ])
+
+  const [resumo] = resumoRows
 
   const temMais = linhas.length > limit
   const pagina = temMais ? linhas.slice(0, limit) : linhas
 
   const materiais = pagina.map(mapearMaterial)
   const nextCursor = temMais ? pagina[pagina.length - 1].numeroSequencial : null
-
-  const [resumo] = await prisma.$queryRaw<ResumoRow[]>(Prisma.sql`
-    SELECT
-      COUNT(*)::int as total,
-      COUNT(*) FILTER (WHERE situacao = 'INATIVO')::int as inativos,
-      COUNT(*) FILTER (WHERE "estoqueAtual" < "estoqueMinimo")::int as "estoqueBaixo",
-      COUNT(*) FILTER (WHERE "estoqueAtual" > "estoqueMaximo")::int as "estoqueAlto"
-    FROM "Material"
-  `)
 
   return NextResponse.json({
     materiais,

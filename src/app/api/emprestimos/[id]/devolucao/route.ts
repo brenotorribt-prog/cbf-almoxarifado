@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireRole } from "@/lib/require-role"
+import { requireRole } from "@/lib/auth/require-role"
 
 // Devolução é sempre total — o controle por item já resolve "devolver só
 // uma parte" (cada material tem seu próprio Emprestimo isolado).

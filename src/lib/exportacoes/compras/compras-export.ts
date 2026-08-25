@@ -1,11 +1,18 @@
 // src/lib/compras-export.ts
 import { prisma } from "@/lib/prisma"
 import { Prisma } from "@prisma/client"
+// Teto de linhas compartilhado com a exportação de relatórios — protege
+// contra consultas gigantes gerando arquivos fora de controle.
+import { LIMITE_LINHAS_EXPORTACAO } from "@/lib/exportacoes/relatorios/relatorios"
 
 export interface FiltrosExportacaoCompras {
   setor?: string
   status?: string
   busca?: string
+  /** Início do período (inclusive) — filtrado NO BANCO via createdAt. */
+  dataInicio?: Date
+  /** Fim do período (inclusive) — filtrado NO BANCO via createdAt. */
+  dataFim?: Date
 }
 
 // Select do material para consistência
@@ -37,9 +44,18 @@ export async function buscarPedidosParaExportacao(filtros: FiltrosExportacaoComp
       { itens: { some: { material: { nome: { contains: filtros.busca, mode: "insensitive" } } } } },
     ]
   }
+  // Período filtrado NO BANCO — antes isso era feito em memória depois de
+  // carregar a tabela inteira.
+  if (filtros.dataInicio || filtros.dataFim) {
+    where.createdAt = {
+      ...(filtros.dataInicio ? { gte: filtros.dataInicio } : {}),
+      ...(filtros.dataFim ? { lte: filtros.dataFim } : {}),
+    }
+  }
 
   return prisma.pedidoCompra.findMany({
     where,
+    take: LIMITE_LINHAS_EXPORTACAO,
     include: {
       area: { select: { nome: true } },
       itens: {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { requireAuth } from "@/lib/require-role"
-import { createClient } from "@/lib/server"
+import { requireAuth } from "@/lib/auth/require-role"
+import { createClient } from "@/lib/supabase/server"
 
 const trocarSenhaSchema = z.object({
   senhaAtual: z.string().min(1, "Informe a senha atual"),

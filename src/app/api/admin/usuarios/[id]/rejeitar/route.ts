@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAdmin } from "@/lib/admin-guard"
+import { requireRole } from "@/lib/auth/require-role"
 
 const rejeitarSchema = z.object({
   motivo: z.string().min(3, "Informe o motivo da rejeição"),
@@ -11,9 +11,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const guard = await requireAdmin()
+  const guard = await requireRole(["ADMIN"])
   if (guard instanceof NextResponse) return guard
-  const usuarioAdmin = guard // <-- MUDOU AQUI: session → usuarioAdmin
+  const usuarioAdmin = guard.user
 
   const { id } = await params
 

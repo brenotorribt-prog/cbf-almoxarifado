@@ -35,7 +35,7 @@ import {
   CalendarClock,
   Printer, // ← ADICIONADO
 } from "lucide-react"
-import { downloadPDF } from "@/lib/pdf-helper"
+import { downloadPDF } from "@/lib/pdf/pdf-helper"
 
 // =====================================================================
 // TIPOS
@@ -611,7 +611,7 @@ async function handleImprimirRecibo() {
   if (!validar()) return
   setImprimindo(true)
   try {
-    const { gerarEAbrirRecibo } = await import("@/lib/gerar-recibo-cliente")
+    const { gerarEAbrirRecibo } = await import("@/lib/pdf/gerar-recibo-cliente")
     await gerarEAbrirRecibo({
       tipoDocumento: "EMPRESTIMO",
       data: new Date(),

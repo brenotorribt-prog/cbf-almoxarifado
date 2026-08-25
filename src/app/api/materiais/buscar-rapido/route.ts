@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/require-role"
+import { requireAuth } from "@/lib/auth/require-role"
 
 const LIMIT_PADRAO = 8
 const LIMIT_MAXIMO = 15

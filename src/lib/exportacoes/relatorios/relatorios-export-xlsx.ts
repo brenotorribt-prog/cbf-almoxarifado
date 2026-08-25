@@ -8,12 +8,15 @@ import ExcelJS from "exceljs"
 import {
   LABEL_TIPO_MOV,
   formatarDataHoraExportacao,
+  type EstoquePessoaRow,
   type MovimentacaoDetalhadaRow,
 } from "./relatorios"
 
 export async function gerarExcelRelatorio(
   movimentacoes: MovimentacaoDetalhadaRow[],
-  periodo: { dataInicio: Date; dataFim: Date }
+  periodo: { dataInicio: Date; dataFim: Date },
+  pessoas: EstoquePessoaRow[] = [],
+  filtros?: { pessoa?: string }
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = "CBF Almoxarifado"
@@ -78,11 +81,53 @@ export async function gerarExcelRelatorio(
 
   resumoSheet.addRow({ indicador: "Período inicial", valor: formatarDataHoraExportacao(periodo.dataInicio) })
   resumoSheet.addRow({ indicador: "Período final", valor: formatarDataHoraExportacao(periodo.dataFim) })
+  if (filtros?.pessoa) {
+    resumoSheet.addRow({ indicador: "Pessoa filtrada", valor: filtros.pessoa })
+  }
   resumoSheet.addRow({ indicador: "Total de movimentações", valor: totalGeral })
   resumoSheet.addRow({ indicador: "Entradas", valor: porTipo("ENTRADA") })
   resumoSheet.addRow({ indicador: "Saídas", valor: porTipo("SAIDA") })
   resumoSheet.addRow({ indicador: "Ajustes", valor: porTipo("AJUSTE") })
   resumoSheet.addRow({ indicador: "Descartes", valor: porTipo("DESCARTE") })
+
+  // Aba "Por Pessoa" — estoque pessoal (quem pegou o quê no período)
+  if (pessoas.length > 0) {
+    const pessoasSheet = workbook.addWorksheet("Por Pessoa")
+    pessoasSheet.columns = [
+      { header: "Pessoa", key: "pessoa", width: 26 },
+      { header: "Setor", key: "setor", width: 20 },
+      { header: "Função", key: "funcao", width: 20 },
+      { header: "Material", key: "material", width: 32 },
+      { header: "Código interno", key: "codigo", width: 16 },
+      { header: "Unidade", key: "unidade", width: 10 },
+      { header: "Retirado", key: "retirado", width: 12 },
+      { header: "Devolvido", key: "devolvido", width: 12 },
+      { header: "Consumido", key: "consumido", width: 12 },
+      { header: "Em posse", key: "saldo", width: 12 },
+    ]
+
+    const headerPessoas = pessoasSheet.getRow(1)
+    headerPessoas.font = { bold: true }
+    headerPessoas.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFEFEF" } }
+    pessoasSheet.views = [{ state: "frozen", ySplit: 1 }]
+
+    for (const p of pessoas) {
+      pessoasSheet.addRow({
+        pessoa: p.nome,
+        setor: p.setor ?? "",
+        funcao: p.funcao ?? "",
+        material: p.materialNome,
+        codigo: p.codigoInterno,
+        unidade: p.unidadeSigla,
+        retirado: p.retirado,
+        devolvido: p.devolvido,
+        consumido: p.consumido,
+        saldo: p.saldo,
+      })
+    }
+
+    pessoasSheet.autoFilter = { from: "A1", to: "J1" }
+  }
 
   const buffer = await workbook.xlsx.writeBuffer()
   return Buffer.from(buffer as ArrayBuffer)

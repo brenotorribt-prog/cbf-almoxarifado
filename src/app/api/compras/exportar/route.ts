@@ -1,13 +1,13 @@
 // src/app/api/compras/exportar/route.ts
 import { NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/require-role"
+import { requireAuth } from "@/lib/auth/require-role"
 import {
   buscarPedidosParaExportacao,
   nomeArquivoExportacao,
-} from "@/lib/compras-export"
-import { gerarExcelPedidos } from "@/lib/compras-export-xlsx"
-import { gerarCsvPedidos } from "@/lib/compras-export-csv"
-import { gerarPdfPedidos } from "@/lib/compras-export-pdf"
+} from "@/lib/exportacoes/compras/compras-export"
+import { gerarExcelPedidos } from "@/lib/exportacoes/compras/compras-export-xlsx"
+import { gerarCsvPedidos } from "@/lib/exportacoes/compras/compras-export-csv"
+import { gerarPdfPedidos } from "@/lib/exportacoes/compras/compras-export-pdf"
 
 export const runtime = "nodejs"
 
@@ -50,17 +50,12 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status") || undefined
   const busca = searchParams.get("busca")?.trim() || undefined
 
-  // Busca pedidos com os filtros
-  const pedidos = await buscarPedidosParaExportacao({ setor, status, busca })
-
-  // Filtra os pedidos pelo período
-  const pedidosFiltrados = pedidos.filter((pedido) => {
-    const createdAt = new Date(pedido.createdAt)
-    return createdAt >= dataInicio && createdAt <= dataFim
-  })
+  // Busca pedidos com os filtros — o período é filtrado NO BANCO (WHERE
+  // createdAt BETWEEN), sem carregar a tabela inteira pra filtrar em JS.
+  const pedidos = await buscarPedidosParaExportacao({ setor, status, busca, dataInicio, dataFim })
 
   if (formato === "xlsx") {
-    const buffer = await gerarExcelPedidos(pedidosFiltrados)
+    const buffer = await gerarExcelPedidos(pedidos)
     // Converte Buffer para Uint8Array para compatibilidade com NextResponse
     const uint8Array = new Uint8Array(buffer)
     return new NextResponse(uint8Array, {
@@ -72,7 +67,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (formato === "csv") {
-    const csv = gerarCsvPedidos(pedidosFiltrados)
+    const csv = gerarCsvPedidos(pedidos)
     return new NextResponse(csv, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
@@ -82,7 +77,7 @@ export async function GET(request: NextRequest) {
   }
 
   // PDF
-  const buffer = await gerarPdfPedidos(pedidosFiltrados, dataInicio, dataFim, { setor, status, busca })
+  const buffer = await gerarPdfPedidos(pedidos, dataInicio, dataFim, { setor, status, busca })
   // Converte Buffer para Uint8Array para compatibilidade com NextResponse
   const uint8Array = new Uint8Array(buffer)
   return new NextResponse(uint8Array, {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/require-role"
-import { podeGerenciarRequisicoes } from "@/lib/requisicoes-helpers"
+import { requireAuth } from "@/lib/auth/require-role"
+import { podeGerenciarRequisicoes } from "@/lib/requisicoes/requisicoes-helpers"
 import { Prisma } from "@prisma/client"
 
 export async function GET() {
@@ -13,12 +13,7 @@ export async function GET() {
 
   const inicioHoje = new Date()
   inicioHoje.setHours(0, 0, 0, 0)
-
-  // Sincroniza empréstimos atrasados (mesma lógica da rota de empréstimos)
-  await prisma.emprestimo.updateMany({
-    where: { status: "EMPRESTADO", dataPrevistaDevolucao: { lt: new Date() } },
-    data: { status: "ATRASADO" },
-  })
+  const agora = new Date()
 
   const [
     materiaisResumo,
@@ -58,8 +53,23 @@ export async function GET() {
       ${!gestor ? Prisma.sql`WHERE "solicitanteUserId" = ${usuario.id}` : Prisma.empty}
     `),
 
-    prisma.emprestimo.count({ where: { status: "EMPRESTADO" } }),
-    prisma.emprestimo.count({ where: { status: "ATRASADO" } }),
+    // Estado de atraso DERIVADO NA LEITURA — substitui o updateMany que
+    // rodava aqui dentro do GET:
+    //   - "em dia": EMPRESTADO com prazo ainda válido;
+    //   - "atrasado": já marcado ATRASADO OU ainda EMPRESTADO com prazo
+    //     estourado. Mesmo resultado que a antiga sincronização produzia
+    //     antes das contagens, sem escrita em rota de leitura.
+    prisma.emprestimo.count({
+      where: { status: "EMPRESTADO", dataPrevistaDevolucao: { gte: agora } },
+    }),
+    prisma.emprestimo.count({
+      where: {
+        OR: [
+          { status: "ATRASADO" },
+          { status: "EMPRESTADO", dataPrevistaDevolucao: { lt: agora } },
+        ],
+      },
+    }),
     prisma.emprestimo.count({ where: { status: "PENDENTE_APROVACAO" } }),
 
     prisma.movimentacaoEstoque.count({ where: { createdAt: { gte: inicioHoje } } }),

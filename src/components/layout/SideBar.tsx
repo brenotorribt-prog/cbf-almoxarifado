@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import styled, { css, keyframes, useTheme } from "styled-components"
 import { motion, LayoutGroup } from "framer-motion"
 import {
@@ -23,9 +23,9 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { hexToRgba } from "@/styles/theme"
-import { useSidebar } from "./Sidebarcontext"
+import { useSidebar } from "./SidebarContext"
 import { useCallback, useEffect, useRef, useState } from "react"
-import ModalPerfil from "@/components/modalperfil"
+import ModalPerfil from "@/components/perfil/modalperfil"
 
 interface NavItem {
   label: string

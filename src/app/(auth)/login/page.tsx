@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useEffect, useId } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import Image from "next/image"
 import dynamic from "next/dynamic"
 import styled, { css, keyframes } from "styled-components"

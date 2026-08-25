@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/prisma'
+import { requireAuth } from '@/lib/auth/require-role'
 import fs from 'fs'
 import path from 'path'
 
@@ -42,7 +43,15 @@ function getImageBase64(filePath: string): string | null {
   }
 }
 
+// Logos carregadas UMA vez por processo — evita repetir fs.readFileSync +
+// conversão base64 síncrona em cada request de geração de PDF.
+const LOGO_BASE64 = getImageBase64('CBFLO.png')
+const FOOTER_LOGO_BASE64 = getImageBase64('CBFTEXT.png')
+
 export async function GET(req: NextRequest) {
+  const guard = await requireAuth()
+  if (guard instanceof NextResponse) return guard
+
   const searchParams = req.nextUrl.searchParams
   const tipo = searchParams.get('tipo')
   const id = searchParams.get('id')
@@ -55,10 +64,6 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // ✅ Carrega as imagens em Base64
-    const logoBase64 = getImageBase64('CBFLO.png')
-    const footerLogoBase64 = getImageBase64('CBFTEXT.png')
-
     // ================================================================
     // MOVIMENTAÇÃO
     // ================================================================
@@ -107,8 +112,8 @@ export async function GET(req: NextRequest) {
             name: movimentacao.usuario.name,
           },
         },
-        logoUrl: logoBase64 || undefined,
-        footerLogoUrl: footerLogoBase64 || undefined,
+        logoUrl: LOGO_BASE64 || undefined,
+        footerLogoUrl: FOOTER_LOGO_BASE64 || undefined,
       })
 
       const pdfBuffer = await renderToBuffer(pdfComponent)
@@ -172,8 +177,8 @@ export async function GET(req: NextRequest) {
             name: emprestimo.aprovador.name,
           } : null,
         },
-        logoUrl: logoBase64 || undefined,
-        footerLogoUrl: footerLogoBase64 || undefined,
+        logoUrl: LOGO_BASE64 || undefined,
+        footerLogoUrl: FOOTER_LOGO_BASE64 || undefined,
       })
 
       const pdfBuffer = await renderToBuffer(pdfComponent)

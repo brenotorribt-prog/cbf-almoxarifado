@@ -1,13 +1,30 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAuth, requireRole } from "@/lib/require-role"
+import { requireAuth, requireRole } from "@/lib/auth/require-role"
 import { Prisma, StatusEmprestimo, Role } from "@prisma/client"
 import { randomUUID } from "crypto"
 
 const LIMIT_PADRAO = 30
 const LIMIT_MAXIMO = 100
 const PAPEIS_APROVADORES = new Set<Role>(["ADMIN", "GESTOR", "SUPERVISOR"])
+
+// Sincronização preguiçosa EMPRESTADO -> ATRASADO, com throttle em memória
+// (máx. 1x por minuto por processo). Preserva a regra da lista refletir
+// atrasos sem depender de cron, sem pagar um UPDATE a cada request.
+const INTERVALO_SYNC_ATRASADOS_MS = 60_000
+let syncAtrasadosEm = 0
+
+async function sincronizarAtrasados(): Promise<void> {
+  const agoraMs = Date.now()
+  if (agoraMs - syncAtrasadosEm < INTERVALO_SYNC_ATRASADOS_MS) return
+  syncAtrasadosEm = agoraMs
+
+  await prisma.emprestimo.updateMany({
+    where: { status: "EMPRESTADO", dataPrevistaDevolucao: { lt: new Date() } },
+    data: { status: "ATRASADO" },
+  })
+}
 
 // GET /api/emprestimos?status=EMPRESTADO&materialId=xxx&loteId=xxx&cursor=xxx&limit=30
 export async function GET(request: NextRequest) {
@@ -24,42 +41,38 @@ export async function GET(request: NextRequest) {
 
   // Sincroniza EMPRESTADO -> ATRASADO de forma preguiçosa, sem depender
   // só do cron diário pra refletir a realidade na lista.
-  await prisma.emprestimo.updateMany({
-    where: { status: "EMPRESTADO", dataPrevistaDevolucao: { lt: new Date() } },
-    data: { status: "ATRASADO" },
-  })
-
-  // Busca contagens para o resumo
-  const [emprestados, atrasados, pendentesAprovacao] = await Promise.all([
-    prisma.emprestimo.count({ where: { status: "EMPRESTADO" } }),
-    prisma.emprestimo.count({ where: { status: "ATRASADO" } }),
-    prisma.emprestimo.count({ where: { status: "PENDENTE_APROVACAO" } }),
-  ])
+  await sincronizarAtrasados()
 
   const where: Prisma.EmprestimoWhereInput = {}
   if (status && Object.values(StatusEmprestimo).includes(status)) where.status = status
   if (materialId) where.materialId = materialId
   if (loteId) where.loteId = loteId
 
-  const emprestimos = await prisma.emprestimo.findMany({
-    where,
-    take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: { createdAt: "desc" },
-    include: {
-      material: { 
-        select: { 
-          id: true, 
-          nome: true, 
-          codigoInterno: true, 
-          fotoUrl: true,
-          unidadeMedida: { select: { sigla: true } }
-        } 
+  // Contagens do resumo + página — independentes, em paralelo.
+  const [emprestados, atrasados, pendentesAprovacao, emprestimos] = await Promise.all([
+    prisma.emprestimo.count({ where: { status: "EMPRESTADO" } }),
+    prisma.emprestimo.count({ where: { status: "ATRASADO" } }),
+    prisma.emprestimo.count({ where: { status: "PENDENTE_APROVACAO" } }),
+    prisma.emprestimo.findMany({
+      where,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "desc" },
+      include: {
+        material: {
+          select: {
+            id: true,
+            nome: true,
+            codigoInterno: true,
+            fotoUrl: true,
+            unidadeMedida: { select: { sigla: true } },
+          },
+        },
+        responsavel: { select: { id: true, name: true } },
+        aprovador: { select: { id: true, name: true } },
       },
-      responsavel: { select: { id: true, name: true } },
-      aprovador: { select: { id: true, name: true } },
-    },
-  })
+    }),
+  ])
 
   const temMais = emprestimos.length > limit
   const pagina = temMais ? emprestimos.slice(0, limit) : emprestimos

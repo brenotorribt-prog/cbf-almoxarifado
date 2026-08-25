@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireRole } from "@/lib/require-role"
+import { requireRole } from "@/lib/auth/require-role"
 
 const atualizarSchema = z.object({
   nome: z.string().trim().min(2).max(100).optional(),

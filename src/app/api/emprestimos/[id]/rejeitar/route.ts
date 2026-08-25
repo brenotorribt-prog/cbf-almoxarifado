@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireRole } from "@/lib/require-role"
+import { requireRole } from "@/lib/auth/require-role"
 
 const rejeitarSchema = z.object({
   motivoRejeicao: z.string().trim().min(3, "Informe o motivo da rejeição").max(300),

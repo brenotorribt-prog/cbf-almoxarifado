@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/require-role"
-import { podeGerenciarRequisicoes } from "@/lib/requisicoes-helpers"
+import { requireAuth } from "@/lib/auth/require-role"
+import { podeGerenciarRequisicoes } from "@/lib/requisicoes/requisicoes-helpers"
 import { Prioridade } from "@prisma/client"
 
 // GET /api/requisicoes/[id] — detalhe completo, com itens e histórico.
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       itens: {
         include: {
           material: {
-            select: { id: true, nome: true, codigoInterno: true, estoqueAtual: true, requerAprovacao: true, unidadeMedida: { select: { sigla: true } } },
+            select: { id: true, nome: true, codigoInterno: true, estoqueAtual: true, requerAprovacao: true, tipoUso: true, unidadeMedida: { select: { sigla: true } } },
           },
           aprovador: { select: { id: true, name: true } },
           preparador: { select: { id: true, name: true } },
@@ -106,6 +106,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   return NextResponse.json({ requisicao })
 }
 
+// Mapper de borda: recebe o resultado de um include dinâmico do Prisma
+// (shape variável por rota), tipá-lo integralmente custaria mais que o valor.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapearDetalhe(r: any) {
   return {
     id: r.id,
@@ -126,6 +129,7 @@ function mapearDetalhe(r: any) {
       : null,
     lancadoPor: r.lancadoPor ? { id: r.lancadoPor.id, nome: r.lancadoPor.name } : null,
     agendamento: r.agendamento,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     itens: r.itens.map((i: any) => ({
       id: i.id,
       status: i.status,

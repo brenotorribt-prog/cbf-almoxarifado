@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireRole } from "@/lib/require-role"
+import { requireRole } from "@/lib/auth/require-role"
 import {
   ACOES_VALIDAS,
   AcaoItem,
@@ -11,7 +11,7 @@ import {
   PAPEIS_GESTAO_REQUISICOES,
   papeisPermitidosParaAcao,
   tipoNotificacaoParaStatus,
-} from "@/lib/requisicoes-helpers"
+} from "@/lib/requisicoes/requisicoes-helpers"
 import { NotificacaoTipo, Prisma, StatusItemSolicitacao } from "@prisma/client"
 
 const acaoSchema = z.object({
@@ -23,6 +23,18 @@ const acaoSchema = z.object({
   itemIds: z.array(z.string()).optional(),
   motivoRejeicao: z.string().trim().max(500).optional(),
   dataPrevistaDevolucao: z.coerce.date().optional(),
+  // Marcação por item usada na ENTREGA: esse material precisa voltar pro
+  // almoxarifado? Omitido -> usa o padrão do cadastro do material
+  // (tipoUso === RETORNAVEL). Marcado como true -> cria Empréstimo na
+  // hora, mesmo que o pedido seja do tipo Saída.
+  marcacoesEntrega: z
+    .array(
+      z.object({
+        itemId: z.string(),
+        precisaRetorno: z.boolean(),
+      })
+    )
+    .optional(),
 })
 
 // POST /api/requisicoes/[id]/acoes
@@ -38,7 +50,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!parsed.success) {
     return NextResponse.json({ error: "Dados inválidos", detalhes: parsed.error.flatten() }, { status: 400 })
   }
-  const { acao, itemIds, motivoRejeicao, dataPrevistaDevolucao } = parsed.data
+  const { acao, itemIds, motivoRejeicao, dataPrevistaDevolucao, marcacoesEntrega } = parsed.data
 
   if (acao === "REJEITAR" && !motivoRejeicao) {
     return NextResponse.json({ error: "Informe o motivo da rejeição" }, { status: 400 })
@@ -49,7 +61,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     include: {
       solicitanteUser: { select: { id: true, name: true, setor: true, cargo: true } },
       pessoaAtendida: { select: { id: true, nome: true, setor: true, funcao: true } },
-      itens: { include: { material: true } },
+      itens: {
+        include: {
+          // Select enxuto: só os campos que a máquina de ações usa
+          // (nome pra mensagem, estoque/tipoUso pra entrega).
+          material: {
+            select: { nome: true, estoqueAtual: true, tipoUso: true },
+          },
+        },
+      },
     },
   })
 
@@ -133,9 +153,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         dataBase.dataEntrega = new Date()
         dataBase.entreguePor = { connect: { id: usuario.id } }
 
+        // Precisa voltar? Override manual da entrega > padrão do cadastro
+        // do material (tipoUso). Materiais retornáveis geram Empréstimo na
+        // entrega — mesmo que o pedido seja do tipo Saída — e ficam "em
+        // posse" da pessoa até a devolução. Consumíveis saem definitivos.
+        const marcacao = marcacoesEntrega?.find((m) => m.itemId === item.id)
+        const precisaRetorno =
+          marcacao?.precisaRetorno ?? item.material.tipoUso === "RETORNAVEL"
+
         let emprestimoId: string | undefined
 
-        if (solicitacao.tipo === "EMPRESTIMO") {
+        if (precisaRetorno) {
           const emprestimo = await tx.emprestimo.create({
             data: {
               materialId: item.materialId,
@@ -160,16 +188,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             quantidade,
             quantidadeAnterior: estoqueAnterior,
             quantidadeAtual: estoqueNovo,
-            motivo:
-              solicitacao.tipo === "EMPRESTIMO"
-                ? `Empréstimo — requisição #${solicitacao.numero}`
-                : `Requisição #${solicitacao.numero}`,
+            motivo: emprestimoId
+              ? `Empréstimo — requisição #${solicitacao.numero}`
+              : `Requisição #${solicitacao.numero}`,
             solicitanteNome: nomeSolicitante,
             solicitanteSetor: setorSolicitante,
             solicitanteFuncao: funcaoSolicitante,
             usuarioId: usuario.id,
             itemSolicitacaoId: item.id,
             emprestimoId,
+            precisaRetorno,
           },
         })
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { PutObjectCommand } from "@aws-sdk/client-s3"
-import { requireAuth } from "@/lib/require-role"
-import { r2, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2"
+import { requireAuth } from "@/lib/auth/require-role"
+import { r2, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/storage/r2"
 import { randomUUID } from "crypto"
 
 const TAMANHO_MAXIMO = 5 * 1024 * 1024 // 5MB — teto de segurança, mesmo raciocínio da foto de material

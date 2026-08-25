@@ -186,6 +186,16 @@ enum TipoUnidade {
   FRACIONADA
 }
 
+// Natureza do material quanto ao retorno ao almoxarifado:
+// - CONSUMIVEL: sai pra uso definitivo (lâmpada, tinta, parafuso) — nunca
+//   fica "em posse" de ninguém, conta como consumido nos relatórios.
+// - RETORNAVEL: ferramenta/equipamento que precisa voltar — ao entregar,
+//   gera empréstimo e fica "em posse" da pessoa até a devolução.
+enum TipoUsoMaterial {
+  CONSUMIVEL
+  RETORNAVEL
+}
+
 // =====================================================================
 // AUTENTICAÇÃO (Supabase Auth — id é o UUID do Supabase, não gerado pelo Prisma)
 // =====================================================================
@@ -310,6 +320,10 @@ model Material {
   fotoUrl           String?
   requerAprovacao   Boolean        @default(false)
 
+  // Define o comportamento padrão na entrega (pode ser ajustado item a
+  // item na entrega pelo almoxarife — ver MovimentacaoEstoque.precisaRetorno).
+  tipoUso TipoUsoMaterial @default(CONSUMIVEL)
+
   criadoPorId String
   criadoPor   User   @relation("MaterialCriadoPor", fields: [criadoPorId], references: [id])
 
@@ -369,6 +383,11 @@ model MovimentacaoEstoque {
   solicitanteNome   String?
   solicitanteSetor  String?
   solicitanteFuncao String?
+
+  // Marcado na entrega: esse material precisa voltar pro almoxarifado?
+  // null = sem marcação (legado) — nesse caso considera-se retorno apenas
+  // quando existe empréstimo vinculado (emprestimoId).
+  precisaRetorno Boolean?
 
   usuarioId String
   usuario   User   @relation("MovimentacaoUsuario", fields: [usuarioId], references: [id])
@@ -665,6 +684,9 @@ model ItemPedidoCompra {
 
   @@index([status])
   @@index([materialId])
+  // FK usada nos JOINs de itens da listagem/exportação de pedidos e em
+  // recalcularStatusPedido (findMany por pedidoId).
+  @@index([pedidoId])
 }
 
 // =====================================================================

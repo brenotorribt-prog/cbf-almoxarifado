@@ -1,37 +1,32 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/require-role"
+import { requireAuth } from "@/lib/auth/require-role"
 import { DeleteObjectCommand } from "@aws-sdk/client-s3"
-import { r2, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2"
+import { r2, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/storage/r2"
 
 // GET /api/perfil — dados do próprio usuário logado.
 // A sessão JWT só carrega id/name/email/role/image; nome, sobrenome e
 // telefone não estão lá, então o modal busca aqui ao abrir.
+// requireAuth já carrega a linha completa do User — nada de reconsultar.
 export async function GET() {
   const guard = await requireAuth()
   if (guard instanceof NextResponse) return guard
 
-  const usuario = await prisma.user.findUnique({
-    where: { id: guard.user.id },
-    select: {
-      id: true,
-      nome: true,
-      sobrenome: true,
-      email: true,
-      telefone: true,
-      cargo: true,
-      setor: true,
-      role: true,
-      image: true,
+  const u = guard.user
+  return NextResponse.json({
+    usuario: {
+      id: u.id,
+      nome: u.nome,
+      sobrenome: u.sobrenome,
+      email: u.email,
+      telefone: u.telefone,
+      cargo: u.cargo,
+      setor: u.setor,
+      role: u.role,
+      image: u.image,
     },
   })
-
-  if (!usuario) {
-    return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
-  }
-
-  return NextResponse.json({ usuario })
 }
 
 // PATCH /api/perfil — edição de dados cadastrais próprios (não senha,
@@ -60,10 +55,8 @@ export async function PATCH(request: NextRequest) {
 
   const dados = parsed.data
 
-  const usuarioAtual = await prisma.user.findUnique({ where: { id: guard.user.id } })
-  if (!usuarioAtual) {
-    return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 })
-  }
+  // requireAuth já carregou a linha completa do usuário logado.
+  const usuarioAtual = guard.user
 
   const novoNome = dados.nome ?? usuarioAtual.nome
   const novoSobrenome = dados.sobrenome ?? usuarioAtual.sobrenome

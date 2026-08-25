@@ -33,7 +33,7 @@ import type {
   SerieTemporalPonto,
   MaterialMovimentadoRow,
   CategoriaMovimentadaRow,
-} from "@/lib/relatorios"
+} from "@/lib/exportacoes/relatorios/relatorios"
 
 // =====================================================================
 // CONFIGURAÇÃO VISUAL COMPARTILHADA

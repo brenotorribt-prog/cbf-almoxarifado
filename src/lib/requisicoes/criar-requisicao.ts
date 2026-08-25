@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { PAPEIS_APROVACAO_SUPERIOR, statusInicialItem, calcularStatusAgregado } from "@/lib/requisicoes-helpers"
+import { PAPEIS_APROVACAO_SUPERIOR, statusInicialItem, calcularStatusAgregado } from "@/lib/requisicoes/requisicoes-helpers"
 import { NotificacaoTipo, Prioridade, TipoSolicitacao } from "@prisma/client"
 
 export const itemRequisicaoSchema = z.object({
@@ -60,11 +60,20 @@ export async function criarRequisicao({
     throw new ErroRequisicao("Lançar em nome de outra pessoa só se aplica a pessoas atendidas, não a usuários logados")
   }
 
-  if (pessoaAtendidaId) {
-    const pessoa = await prisma.pessoaAtendida.findUnique({ where: { id: pessoaAtendidaId } })
-    if (!pessoa) {
-      throw new ErroRequisicao("Pessoa atendida não encontrada. Selecione um cadastro existente.", 404)
-    }
+  const materialIds = [...new Set(dados.itens.map((i) => i.materialId))]
+
+  // Buscas independentes em paralelo. A VALIDAÇÃO continua na ordem
+  // original (pessoa -> transferência -> empréstimo -> materiais) pra
+  // preservar exatamente qual erro é devolvido primeiro.
+  const [pessoa, materiais] = await Promise.all([
+    pessoaAtendidaId
+      ? prisma.pessoaAtendida.findUnique({ where: { id: pessoaAtendidaId } })
+      : Promise.resolve(null),
+    prisma.material.findMany({ where: { id: { in: materialIds } } }),
+  ])
+
+  if (pessoaAtendidaId && !pessoa) {
+    throw new ErroRequisicao("Pessoa atendida não encontrada. Selecione um cadastro existente.", 404)
   }
 
   // TRANSFERENCIA não faz sentido pelo formulário público (é fluxo interno
@@ -79,9 +88,6 @@ export async function criarRequisicao({
       throw new ErroRequisicao("Todo item de empréstimo precisa de uma data prevista de devolução")
     }
   }
-
-  const materialIds = [...new Set(dados.itens.map((i) => i.materialId))]
-  const materiais = await prisma.material.findMany({ where: { id: { in: materialIds } } })
 
   if (materiais.length !== materialIds.length) {
     throw new ErroRequisicao("Um ou mais materiais da requisição não foram encontrados", 404)

@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * components/modalperfil.tsx
+ * components/perfil/modalperfil.tsx
  * ------------------------------------------------------------------
  * Modal de perfil do usuário logado: nome, sobrenome, telefone (com
  * máscara), avatar e troca de senha (exige senha atual). Não edita
@@ -23,7 +23,7 @@ import {
   LogOut,
   LogOut as LogOutIcon, // <-- RENOMEADO PARA EVITAR CONFLITO
 } from "lucide-react"
-import { formatarTelefone } from "@/lib/telefone-mask"
+import { formatarTelefone } from "@/lib/utils/telefone-mask"
 
 // =====================================================================
 // HELPERS — compressão de avatar

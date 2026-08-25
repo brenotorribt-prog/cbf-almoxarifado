@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { PutObjectCommand } from "@aws-sdk/client-s3"
-import { requireRole } from "@/lib/require-role"
-import { r2, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2"
+import { requireRole } from "@/lib/auth/require-role"
+import { r2, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/storage/r2"
 import { randomUUID } from "crypto"
 
 // Teto de segurança no servidor. O client já manda a imagem comprimida

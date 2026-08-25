@@ -34,7 +34,7 @@ import {
   Briefcase,
   Printer, // ← adicionado
 } from "lucide-react"
-import { downloadPDF } from "@/lib/pdf-helper"
+import { downloadPDF } from "@/lib/pdf/pdf-helper"
 
 // =====================================================================
 // TIPOS
@@ -556,7 +556,7 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
     if (!validar() || !materialSelecionado || quantidadeNumerica === null) return
     setImprimindo(true)
     try {
-      const { gerarEAbrirRecibo } = await import("@/lib/gerar-recibo-cliente")
+      const { gerarEAbrirRecibo } = await import("@/lib/pdf/gerar-recibo-cliente")
       await gerarEAbrirRecibo({
         tipoDocumento: "SAIDA",
         data: new Date(),

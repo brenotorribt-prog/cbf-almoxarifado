@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAuth, requireRole } from "@/lib/require-role"
+import { requireAuth, requireRole } from "@/lib/auth/require-role"
 import { Prisma, TipoMovimentacao } from "@prisma/client"
 
 const LIMIT_PADRAO = 30
@@ -19,27 +19,29 @@ export async function GET(request: NextRequest) {
   const limitParam = Number(searchParams.get("limit") ?? LIMIT_PADRAO)
   const limit = Math.min(Math.max(limitParam || LIMIT_PADRAO, 1), LIMIT_MAXIMO)
 
-  // Contagem de movimentações de hoje
+  // Contagem de movimentações de hoje + pagina — independentes, em paralelo.
   const inicioHoje = new Date()
   inicioHoje.setHours(0, 0, 0, 0)
-  const totalHoje = await prisma.movimentacaoEstoque.count({ 
-    where: { createdAt: { gte: inicioHoje } } 
-  })
 
   const where: Prisma.MovimentacaoEstoqueWhereInput = {}
   if (materialId) where.materialId = materialId
   if (tipo && Object.values(TipoMovimentacao).includes(tipo)) where.tipo = tipo
 
-  const movimentacoes = await prisma.movimentacaoEstoque.findMany({
-    where,
-    take: limit + 1,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    orderBy: { createdAt: "desc" },
-    include: {
-      material: { select: { id: true, nome: true, codigoInterno: true } },
-      usuario: { select: { id: true, name: true } },
-    },
-  })
+  const [totalHoje, movimentacoes] = await Promise.all([
+    prisma.movimentacaoEstoque.count({
+      where: { createdAt: { gte: inicioHoje } },
+    }),
+    prisma.movimentacaoEstoque.findMany({
+      where,
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      orderBy: { createdAt: "desc" },
+      include: {
+        material: { select: { id: true, nome: true, codigoInterno: true } },
+        usuario: { select: { id: true, name: true } },
+      },
+    }),
+  ])
 
   const temMais = movimentacoes.length > limit
   const pagina = temMais ? movimentacoes.slice(0, limit) : movimentacoes

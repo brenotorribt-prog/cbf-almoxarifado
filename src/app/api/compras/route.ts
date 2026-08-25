@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAuth, requireRole } from "@/lib/require-role"
+import { requireAuth, requireRole } from "@/lib/auth/require-role"
 import { Prisma } from "@prisma/client"
 
 // Select do material para consistência em toda a aplicação

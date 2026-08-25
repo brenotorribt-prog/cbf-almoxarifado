@@ -12,6 +12,17 @@ import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { Prisma, TipoMovimentacao } from "@prisma/client"
 
+// Tipos e helpers puros vivem em relatorios-shared.ts (client-safe) e são
+// reexportados aqui pra manter um único ponto de import no servidor.
+import {
+  agruparEstoquePorPessoa,
+  type EstoquePessoaRow,
+  type PessoaEstoqueAgrupada,
+} from "./relatorios-shared"
+
+export { agruparEstoquePorPessoa }
+export type { EstoquePessoaRow, PessoaEstoqueAgrupada }
+
 // =====================================================================
 // CONSTANTES
 // =====================================================================
@@ -33,6 +44,8 @@ export interface FiltrosRelatorio {
   dataFim: Date // fim do dia (23:59:59.999)
   categoriaId?: string
   tipo?: TipoMovimentacao
+  /** Nome do solicitante pra filtrar o relatório por pessoa. */
+  pessoa?: string
 }
 
 export interface ResumoTipoRow {
@@ -111,6 +124,7 @@ const filtrosSchema = z.object({
   dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data final inválida"),
   categoriaId: z.string().trim().min(1).optional(),
   tipo: z.enum(["ENTRADA", "SAIDA", "AJUSTE", "DESCARTE"]).optional(),
+  pessoa: z.string().trim().min(1).max(120).optional(),
 })
 
 export type ResultadoParseFiltros =
@@ -129,13 +143,14 @@ export function parseFiltrosRelatorio(searchParams: URLSearchParams): ResultadoP
     dataFim: searchParams.get("dataFim") ?? undefined,
     categoriaId: searchParams.get("categoriaId")?.trim() || undefined,
     tipo: searchParams.get("tipo") || undefined,
+    pessoa: searchParams.get("pessoa")?.trim() || undefined,
   })
 
   if (!parsed.success) {
     return { ok: false, erro: parsed.error.issues[0]?.message ?? "Filtros inválidos." }
   }
 
-  const { dataInicio, dataFim, categoriaId, tipo } = parsed.data
+  const { dataInicio, dataFim, categoriaId, tipo, pessoa } = parsed.data
 
   const inicio = new Date(`${dataInicio}T00:00:00.000`)
   const fim = new Date(`${dataFim}T23:59:59.999`)
@@ -152,7 +167,7 @@ export function parseFiltrosRelatorio(searchParams: URLSearchParams): ResultadoP
     return { ok: false, erro: `O período não pode exceder ${MAX_DIAS_RELATORIO} dias.` }
   }
 
-  return { ok: true, filtros: { dataInicio: inicio, dataFim: fim, categoriaId, tipo } }
+  return { ok: true, filtros: { dataInicio: inicio, dataFim: fim, categoriaId, tipo, pessoa } }
 }
 
 // =====================================================================
@@ -195,6 +210,19 @@ function condicoesBase(filtros: FiltrosRelatorio): Prisma.Sql[] {
   }
   if (filtros.tipo) {
     condicoes.push(Prisma.sql`m.tipo = ${filtros.tipo}::"TipoMovimentacao"`)
+  }
+  if (filtros.pessoa) {
+    // Filtro por pessoa via EXISTS: cobre saídas diretas (solicitante na
+    // própria movimentação), devoluções de empréstimo (pessoa no Emprestimo)
+    // e devoluções avulsas (pessoa na movimentação de origem) — sem precisar
+    // alterar os FROM das queries agregadas.
+    condicoes.push(Prisma.sql`EXISTS (
+      SELECT 1 FROM "MovimentacaoEstoque" x
+      LEFT JOIN "Emprestimo" xe ON xe.id = x."emprestimoId"
+      LEFT JOIN "MovimentacaoEstoque" xo ON xo.id = x."movimentacaoOrigemId"
+      WHERE x.id = m.id
+        AND COALESCE(x."solicitanteNome", xe."solicitanteNome", xo."solicitanteNome") = ${filtros.pessoa}
+    )`)
   }
   return condicoes
 }
@@ -415,6 +443,103 @@ export async function buscarMovimentacoesDetalhadas(
     unidadeSigla: r.unidadeSigla,
     categoriaNome: r.categoriaNome,
     usuarioNome: r.usuarioNome,
+  }))
+}
+
+// =====================================================================
+// ESTOQUE POR PESSOA (quem pegou o quê)
+// =====================================================================
+
+/**
+ * Posição de estoque pessoal por pessoa atendida dentro do período.
+ *
+ * Considera:
+ *  - SAÍDAS com solicitante identificado -> "retirado"
+ *  - ENTRADAS de devolução de empréstimo (emprestimoId preenchido) ->
+ *    "devolvido", atribuídas à pessoa do empréstimo (a movimentação de
+ *    devolução não carrega solicitante próprio, então pega do Emprestimo).
+ *
+ * O filtro global de TIPO é ignorado de propósito nesta visão: aplicar
+ * "somente ENTRADA" ou "somente SAÍDA" quebraria o cálculo do saldo.
+ * Período e categoria são respeitados normalmente.
+ */
+export async function buscarEstoquePorPessoa(
+  filtros: FiltrosRelatorio
+): Promise<EstoquePessoaRow[]> {
+  const condicoes: Prisma.Sql[] = [
+    Prisma.sql`m."createdAt" >= ${filtros.dataInicio}`,
+    Prisma.sql`m."createdAt" <= ${filtros.dataFim}`,
+    // Saídas com solicitante identificado OU entradas de devolução
+    // (empréstimo ou avulsa vinculada à saída original).
+    Prisma.sql`(
+      (m.tipo = 'SAIDA' AND m."solicitanteNome" IS NOT NULL)
+      OR (
+        m.tipo = 'ENTRADA'
+        AND (m."emprestimoId" IS NOT NULL OR m."movimentacaoOrigemId" IS NOT NULL)
+        AND COALESCE(m."solicitanteNome", e."solicitanteNome", mo."solicitanteNome") IS NOT NULL
+      )
+    )`,
+  ]
+  if (filtros.categoriaId) {
+    condicoes.push(Prisma.sql`mat."categoriaId" = ${filtros.categoriaId}`)
+  }
+  if (filtros.pessoa) {
+    condicoes.push(
+      Prisma.sql`COALESCE(m."solicitanteNome", e."solicitanteNome", mo."solicitanteNome") = ${filtros.pessoa}`
+    )
+  }
+
+  const rows = await prisma.$queryRaw<
+    {
+      nome: string
+      setor: string | null
+      funcao: string | null
+      materialId: string
+      materialNome: string
+      codigoInterno: string
+      unidadeSigla: string
+      retirado: number
+      devolvido: number
+      consumido: number
+    }[]
+  >(Prisma.sql`
+    SELECT
+      COALESCE(m."solicitanteNome", e."solicitanteNome", mo."solicitanteNome") as nome,
+      COALESCE(m."solicitanteSetor", e."solicitanteSetor", mo."solicitanteSetor") as setor,
+      COALESCE(m."solicitanteFuncao", e."solicitanteFuncao", mo."solicitanteFuncao") as funcao,
+      mat.id as "materialId",
+      mat.nome as "materialNome",
+      mat."codigoInterno",
+      u.sigla as "unidadeSigla",
+      SUM(CASE WHEN m.tipo = 'SAIDA' THEN m.quantidade ELSE 0 END)::float8 as retirado,
+      SUM(CASE WHEN m.tipo = 'ENTRADA' THEN m.quantidade ELSE 0 END)::float8 as devolvido,
+      SUM(CASE
+        WHEN m.tipo = 'SAIDA'
+          AND NOT COALESCE(m."precisaRetorno", m."emprestimoId" IS NOT NULL)
+        THEN m.quantidade ELSE 0 END
+      )::float8 as consumido
+    FROM "MovimentacaoEstoque" m
+    JOIN "Material" mat ON mat.id = m."materialId"
+    JOIN "UnidadeMedida" u ON u.id = mat."unidadeMedidaId"
+    LEFT JOIN "Emprestimo" e ON e.id = m."emprestimoId"
+    LEFT JOIN "MovimentacaoEstoque" mo ON mo.id = m."movimentacaoOrigemId"
+    WHERE ${Prisma.join(condicoes, " AND ")}
+    GROUP BY 1, 2, 3, 4, 5, 6, 7
+    ORDER BY nome ASC, "materialNome" ASC
+  `)
+
+  return rows.map((r) => ({
+    nome: r.nome,
+    setor: r.setor,
+    funcao: r.funcao,
+    materialId: r.materialId,
+    materialNome: r.materialNome,
+    codigoInterno: r.codigoInterno,
+    unidadeSigla: r.unidadeSigla,
+    retirado: Number(r.retirado),
+    devolvido: Number(r.devolvido),
+    consumido: Number(r.consumido),
+    saldo: Number(r.retirado) - Number(r.consumido) - Number(r.devolvido),
   }))
 }
 

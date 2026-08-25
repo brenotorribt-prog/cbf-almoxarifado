@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
-import { criarRequisicao, criarRequisicaoBaseSchema, ErroRequisicao } from "@/lib/criar-requisicao"
+import { criarRequisicao, criarRequisicaoBaseSchema, ErroRequisicao } from "@/lib/requisicoes/criar-requisicao"
 
 // POST /api/publico/requisicoes — formulário público, SEM autenticação.
 //

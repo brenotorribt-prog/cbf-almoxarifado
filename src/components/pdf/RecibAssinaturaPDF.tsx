@@ -1,6 +1,6 @@
 // components/pdf/RecibAssinaturaPDF.tsx
 import { Document, Page, Text, View } from '@react-pdf/renderer'
-import { pdfStyles } from '@/lib/pdf-utils'
+import { pdfStyles } from '@/lib/pdf/pdf-utils'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { Image } from '@react-pdf/renderer'

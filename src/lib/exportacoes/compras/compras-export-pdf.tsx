@@ -1,5 +1,11 @@
 // src/lib/compras-export-pdf.ts
-import { StyleSheet, View, Text, Document, Page, Font } from "@react-pdf/renderer"
+// Cabeçalho e rodapé seguem o padrão visual do ReciboAssinaturaPDF
+// (logo no topo, logo + data de geração no rodapé fixo).
+import { StyleSheet, View, Text, Document, Page, Font, Image } from "@react-pdf/renderer"
+import { pdfStyles } from "@/lib/pdf/pdf-utils"
+import { carregarLogosPdf } from "@/lib/pdf/pdf-logos-server"
+import { format } from "date-fns"
+import { ptBR } from "date-fns/locale"
 import { 
   resolverDetalhesItem, 
   STATUS_PEDIDO_LABEL, 
@@ -26,18 +32,6 @@ Font.register({
 // =====================================================================
 
 const styles = StyleSheet.create({
-  page: {
-    padding: 30,
-    fontFamily: "Helvetica",
-    fontSize: 8,
-    backgroundColor: "#ffffff",
-  },
-  titulo: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 4,
-    color: "#1a1a1a",
-  },
   subtitulo: {
     fontSize: 10,
     color: "#666666",
@@ -236,16 +230,32 @@ interface PDFComprasProps {
     status?: string
     busca?: string
   }
+  logoUrl?: string
+  footerLogoUrl?: string
 }
 
-export function PDFCompras({ pedidos, dataInicio, dataFim, filtros = {} }: PDFComprasProps) {
+export function PDFCompras({
+  pedidos,
+  dataInicio,
+  dataFim,
+  filtros = {},
+  logoUrl,
+  footerLogoUrl,
+}: PDFComprasProps) {
   const totalItens = pedidos.reduce((acc, p) => acc + p.itens.length, 0)
   
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
-        {/* Cabeçalho */}
-        <Text style={styles.titulo}>Relatório de Pedidos de Compra</Text>
+      <Page size="A4" style={pdfStyles.page}>
+        {/* CABEÇALHO COM LOGO (padrão RecibAssinaturaPDF) */}
+        <View style={pdfStyles.header}>
+          {logoUrl && <Image src={logoUrl} style={pdfStyles.logo} />}
+          <View style={pdfStyles.headerText}>
+            <Text style={pdfStyles.title}>Relatório de Pedidos de Compra</Text>
+            <Text style={pdfStyles.subtitle}>Sistema de Almoxarifado CBF</Text>
+          </View>
+        </View>
+
         <Text style={styles.subtitulo}>
           Período: {formatarDataSimples(dataInicio)} a {formatarDataSimples(dataFim)}
         </Text>
@@ -268,6 +278,14 @@ export function PDFCompras({ pedidos, dataInicio, dataFim, filtros = {} }: PDFCo
             <PedidoSecao key={pedido.id} pedido={pedido} />
           ))
         )}
+
+        {/* RODAPÉ FIXO COM LOGO (padrão RecibAssinaturaPDF) */}
+        <View style={pdfStyles.footer} fixed>
+          {footerLogoUrl && <Image src={footerLogoUrl} style={pdfStyles.footerLogo} />}
+          <Text style={pdfStyles.footerText}>
+            Documento gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+          </Text>
+        </View>
       </Page>
     </Document>
   )
@@ -288,8 +306,18 @@ export async function gerarPdfPedidos(
   }
 ) {
   const { renderToBuffer } = await import("@react-pdf/renderer")
+  const { logoUrl, footerLogoUrl } = carregarLogosPdf()
   
-  const pdf = <PDFCompras pedidos={pedidos} dataInicio={dataInicio} dataFim={dataFim} filtros={filtros} />
+  const pdf = (
+    <PDFCompras
+      pedidos={pedidos}
+      dataInicio={dataInicio}
+      dataFim={dataFim}
+      filtros={filtros}
+      logoUrl={logoUrl}
+      footerLogoUrl={footerLogoUrl}
+    />
+  )
   const buffer = await renderToBuffer(pdf)
   
   return buffer

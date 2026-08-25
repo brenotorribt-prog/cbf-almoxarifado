@@ -28,7 +28,6 @@ import {
   UserRound,
   Hash,
   Clock,
-  AlertTriangle,
   CalendarClock,
 } from "lucide-react"
 
@@ -54,13 +53,21 @@ interface Item {
   quantidade: number
   requerAprovacaoSuperior: boolean
   alteradoManualmente: boolean
-  material: { id: string; nome: string; codigoInterno: string; estoqueAtual: number; unidadeMedida: { sigla: string } }
+  material: {
+    id: string
+    nome: string
+    codigoInterno: string
+    estoqueAtual: number
+    tipoUso: "CONSUMIVEL" | "RETORNAVEL"
+    unidadeMedida: { sigla: string }
+  }
   aprovador: { id: string; name: string } | null
   motivoRejeicao: string | null
   preparador: { id: string; name: string } | null
   entreguePor: { id: string; name: string } | null
   dataPrevistaDevolucao: string | null
   observacao: string | null
+  movimentacao: { id: string; tipo: string; createdAt: string } | null
   emprestimo: { id: string; status: string; dataPrevistaDevolucao: string; dataDevolucao: string | null } | null
 }
 
@@ -155,7 +162,6 @@ function formatarData(iso: string | null) {
 export default function RequisicaoDetalheModal({
   requisicaoId,
   role,
-  userId,
   onClose,
   onAtualizada,
 }: {
@@ -172,29 +178,67 @@ export default function RequisicaoDetalheModal({
   const [rejeitandoItemId, setRejeitandoItemId] = useState<string | null>(null)
   const [motivoRejeicao, setMotivoRejeicao] = useState("")
   const [aviso, setAviso] = useState<string | null>(null)
+  // Marcação "precisa voltar?" por item — default vem do cadastro do
+  // material (tipoUso) e pode ser ajustado na hora da entrega.
+  const [marcacoesRetorno, setMarcacoesRetorno] = useState<Record<string, boolean>>({})
 
-  const carregar = useCallback(async () => {
-    setCarregando(true)
-    setErro(null)
-    try {
-      const res = await fetch(`/api/requisicoes/${requisicaoId}`)
-      if (!res.ok) throw new Error("Falha ao carregar requisição")
-      const data = await res.json()
-      setDetalhe(data.requisicao)
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro desconhecido")
-    } finally {
-      setCarregando(false)
-    }
+  // Busca o detalhe na API e devolve já tipado (sem tocar em estado).
+  const buscarDetalhe = useCallback(async (): Promise<Detalhe> => {
+    const res = await fetch(`/api/requisicoes/${requisicaoId}`)
+    if (!res.ok) throw new Error("Falha ao carregar requisição")
+    const data = await res.json()
+    return data.requisicao as Detalhe
   }, [requisicaoId])
 
+  /** Aplica o detalhe recebido ao estado (detalhe + marcações padrão). */
+  function aplicarDetalhe(detalheRecebido: Detalhe) {
+    setDetalhe(detalheRecebido)
+    const iniciais: Record<string, boolean> = {}
+    for (const item of detalheRecebido.itens) {
+      if (!item.movimentacao) {
+        iniciais[item.id] = item.material.tipoUso === "RETORNAVEL"
+      }
+    }
+    setMarcacoesRetorno(iniciais)
+  }
+
+  // Carregamento inicial — todos os setState acontecem após o await
+  // (nunca sincronamente no corpo do effect).
   useEffect(() => {
-    carregar()
-  }, [carregar])
+    let cancelado = false
+    buscarDetalhe()
+      .then((d) => {
+        if (!cancelado) aplicarDetalhe(d)
+      })
+      .catch((e) => {
+        if (!cancelado) setErro(e instanceof Error ? e.message : "Erro desconhecido")
+      })
+      .finally(() => {
+        if (!cancelado) setCarregando(false)
+      })
+    return () => {
+      cancelado = true
+    }
+  }, [buscarDetalhe])
+
+  /** Recarrega após uma ação (sem spinner de tela cheia). */
+  async function carregar() {
+    try {
+      aplicarDetalhe(await buscarDetalhe())
+      setErro(null)
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro desconhecido")
+    }
+  }
 
   const gestor = PAPEIS_GESTAO.has(role)
 
-  async function executarAcao(acao: Acao, itemIds: string[] | undefined, motivo?: string) {
+  async function executarAcao(
+    acao: Acao,
+    itemIds: string[] | undefined,
+    motivo?: string,
+    marcacoesEntrega?: { itemId: string; precisaRetorno: boolean }[]
+  ) {
     const chave = itemIds && itemIds.length === 1 ? `item-${itemIds[0]}-${acao}` : `massa-${acao}`
     setProcessando(chave)
     setAviso(null)
@@ -202,7 +246,7 @@ export default function RequisicaoDetalheModal({
       const res = await fetch(`/api/requisicoes/${requisicaoId}/acoes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ acao, itemIds, motivoRejeicao: motivo }),
+        body: JSON.stringify({ acao, itemIds, motivoRejeicao: motivo, marcacoesEntrega }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -210,9 +254,9 @@ export default function RequisicaoDetalheModal({
         return
       }
       if (data.ignorados?.length > 0) {
-        const resumo = data.ignorados
+        const resumo = (data.ignorados as { material: string; motivo: string }[])
           .slice(0, 3)
-          .map((i: any) => `${i.material} (${i.motivo})`)
+          .map((i) => `${i.material} (${i.motivo})`)
           .join("; ")
         setAviso(`${data.ignorados.length} item(ns) ignorado(s): ${resumo}${data.ignorados.length > 3 ? "..." : ""}`)
       }
@@ -238,6 +282,20 @@ export default function RequisicaoDetalheModal({
       return
     }
     executarAcao("REJEITAR", [rejeitandoItemId!], motivoRejeicao.trim())
+  }
+
+  function definirMarcacao(itemId: string, precisaRetorno: boolean) {
+    setMarcacoesRetorno((prev) => ({ ...prev, [itemId]: precisaRetorno }))
+  }
+
+  /** Monta a lista de marcações pros itens informados (ou todos elegíveis). */
+  function montarMarcacoes(itemIds?: string[]) {
+    const alvo =
+      itemIds ??
+      (detalhe?.itens ?? [])
+        .filter((i) => !i.alteradoManualmente && !i.movimentacao)
+        .map((i) => i.id)
+    return alvo.map((itemId) => ({ itemId, precisaRetorno: Boolean(marcacoesRetorno[itemId]) }))
   }
 
   // Ações em massa disponíveis: união do que pelo menos um item elegível
@@ -340,7 +398,19 @@ export default function RequisicaoDetalheModal({
                       const Icone = ICONE_ACAO[acao]
                       const chave = `massa-${acao}`
                       return (
-                        <AcaoBotao key={acao} $tom="neutro" disabled={processando === chave} onClick={() => executarAcao(acao, undefined)}>
+                        <AcaoBotao
+                          key={acao}
+                          $tom="neutro"
+                          disabled={processando === chave}
+                          onClick={() =>
+                            executarAcao(
+                              acao,
+                              undefined,
+                              undefined,
+                              acao === "ENTREGAR" ? montarMarcacoes() : undefined
+                            )
+                          }
+                        >
                           {processando === chave ? <Loader2 size={13} style={{ animation: "spin 0.7s linear infinite" }} /> : <Icone size={13} />}
                           {LABEL_ACAO[acao]}
                         </AcaoBotao>
@@ -381,6 +451,31 @@ export default function RequisicaoDetalheModal({
                       </ItemMetaLinha>
                     )}
 
+                    {/* Marcação de retorno — só faz sentido antes da entrega */}
+                    {gestor &&
+                      !item.movimentacao &&
+                      ["APROVADO", "EM_PREPARACAO", "PRONTO"].includes(item.status) && (
+                        <RetornoToggle>
+                          <RetornoLabel>Precisa voltar pro almoxarifado?</RetornoLabel>
+                          <RetornoOpcoes>
+                            <RetornoOpcao
+                              type="button"
+                              $ativo={Boolean(marcacoesRetorno[item.id])}
+                              onClick={() => definirMarcacao(item.id, true)}
+                            >
+                              Sim · vira empréstimo
+                            </RetornoOpcao>
+                            <RetornoOpcao
+                              type="button"
+                              $ativo={!marcacoesRetorno[item.id]}
+                              onClick={() => definirMarcacao(item.id, false)}
+                            >
+                              Não · uso/consumo
+                            </RetornoOpcao>
+                          </RetornoOpcoes>
+                        </RetornoToggle>
+                      )}
+
                     {gestor && rejeitandoItemId === item.id && (
                       <RejeicaoForm>
                         <input
@@ -412,7 +507,14 @@ export default function RequisicaoDetalheModal({
                               $tom={tom}
                               disabled={!permitido || processando === chave}
                               title={!permitido ? "Requer aprovação de um nível superior" : undefined}
-                              onClick={() => (acao === "REJEITAR" ? iniciarRejeicao(item.id) : executarAcao(acao, [item.id]))}
+                              onClick={() => {
+                                if (acao === "REJEITAR") iniciarRejeicao(item.id)
+                                else if (acao === "ENTREGAR")
+                                  executarAcao(acao, [item.id], undefined, [
+                                    { itemId: item.id, precisaRetorno: Boolean(marcacoesRetorno[item.id]) },
+                                  ])
+                                else executarAcao(acao, [item.id])
+                              }}
                             >
                               {processando === chave ? <Loader2 size={13} style={{ animation: "spin 0.7s linear infinite" }} /> : <Icone size={13} />}
                               {LABEL_ACAO[acao]}
@@ -677,6 +779,47 @@ const ItemAcoes = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: ${({ theme }) => theme.spacing[2]};
+`
+
+const RetornoToggle = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: ${({ theme }) => theme.spacing[3]};
+  flex-wrap: wrap;
+  padding: ${({ theme }) => theme.spacing[2]} ${({ theme }) => theme.spacing[3]};
+  border-radius: ${({ theme }) => theme.radii.md};
+  background: ${({ theme }) => hexToRgba(theme.colors.primary.vivid, 0.06)};
+  border: 1px dashed ${({ theme }) => hexToRgba(theme.colors.primary.vivid, 0.35)};
+`
+
+const RetornoLabel = styled.span`
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.text.secondary};
+`
+
+const RetornoOpcoes = styled.div`
+  display: flex;
+  gap: ${({ theme }) => theme.spacing[2]};
+`
+
+const RetornoOpcao = styled.button<{ $ativo: boolean }>`
+  padding: ${({ theme }) => `${theme.spacing[1]} ${theme.spacing[3]}`};
+  border-radius: ${({ theme }) => theme.radii.full};
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.medium};
+  border: 1px solid;
+  cursor: pointer;
+  white-space: nowrap;
+
+  color: ${({ $ativo, theme }) =>
+    $ativo ? theme.colors.primary.vivid : theme.colors.text.muted};
+  background: ${({ $ativo, theme }) =>
+    $ativo ? hexToRgba(theme.colors.primary.vivid, 0.14) : "transparent"};
+  border-color: ${({ $ativo, theme }) =>
+    $ativo ? hexToRgba(theme.colors.primary.vivid, 0.5) : theme.colors.surface.border};
+
+  &:hover { opacity: 0.85; }
 `
 
 const RejeicaoForm = styled.div`

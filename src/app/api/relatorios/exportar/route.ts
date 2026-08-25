@@ -7,15 +7,16 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAuth } from "@/lib/require-role"
+import { requireAuth } from "@/lib/auth/require-role"
 import {
   parseFiltrosRelatorio,
   buscarMovimentacoesDetalhadas,
+  buscarEstoquePorPessoa,
   nomeArquivoRelatorio,
-} from "@/lib/relatorios"
-import { gerarExcelRelatorio } from "@/lib/relatorios-export-xlsx"
-import { gerarCsvRelatorio } from "@/lib/relatorios-export-csv"
-import { gerarPdfRelatorio } from "@/lib/relatorios-export-pdf"
+} from "@/lib/exportacoes/relatorios/relatorios"
+import { gerarExcelRelatorio } from "@/lib/exportacoes/relatorios/relatorios-export-xlsx"
+import { gerarCsvRelatorio } from "@/lib/exportacoes/relatorios/relatorios-export-csv"
+import { gerarPdfRelatorio } from "@/lib/exportacoes/relatorios/relatorios-export-pdf"
 
 export const runtime = "nodejs"
 
@@ -48,7 +49,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const movimentacoes = await buscarMovimentacoesDetalhadas(filtros)
+    const [movimentacoes, pessoas] = await Promise.all([
+      buscarMovimentacoesDetalhadas(filtros),
+      buscarEstoquePorPessoa(filtros),
+    ])
 
     if (movimentacoes.length === 0) {
       return NextResponse.json(
@@ -58,10 +62,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (formato === "xlsx") {
-      const buffer = await gerarExcelRelatorio(movimentacoes, {
-        dataInicio: filtros.dataInicio,
-        dataFim: filtros.dataFim,
-      })
+      const buffer = await gerarExcelRelatorio(
+        movimentacoes,
+        { dataInicio: filtros.dataInicio, dataFim: filtros.dataFim },
+        pessoas,
+        { pessoa: filtros.pessoa }
+      )
       return new NextResponse(new Uint8Array(buffer), {
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -85,7 +91,8 @@ export async function GET(request: NextRequest) {
       movimentacoes,
       filtros.dataInicio,
       filtros.dataFim,
-      { categoriaNome, tipo: filtros.tipo }
+      { categoriaNome, tipo: filtros.tipo, pessoa: filtros.pessoa },
+      pessoas
     )
     return new NextResponse(new Uint8Array(buffer), {
       headers: {

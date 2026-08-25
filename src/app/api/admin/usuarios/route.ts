@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { requireAdmin } from "@/lib/admin-guard"
+import { requireRole } from "@/lib/auth/require-role"
 import { Prisma, Role, UserStatus } from "@prisma/client"
 
 // GET /api/admin/usuarios?status=PENDENTE&role=ALMOXARIFE&busca=joao&page=1&limit=20
 export async function GET(request: NextRequest) {
-  const guard = await requireAdmin()
+  const guard = await requireRole(["ADMIN"])
   if (guard instanceof NextResponse) return guard
 
   const { searchParams } = new URL(request.url)
@@ -34,7 +34,11 @@ export async function GET(request: NextRequest) {
     ]
   }
 
-  const [usuarios, total] = await Promise.all([
+  // Página + total + contagem por status — tudo em paralelo. O resumo
+  // substitui 3 counts sequenciais por um único groupBy, mantendo a mesma
+  // semântica de filtro (o `where` de busca continua valendo; só o status
+  // é liberado pra agrupar).
+  const [usuarios, total, contagensPorStatus] = await Promise.all([
     prisma.user.findMany({
       where,
       select: {
@@ -63,13 +67,20 @@ export async function GET(request: NextRequest) {
       take: limit,
     }),
     prisma.user.count({ where }),
+    prisma.user.groupBy({
+      by: ["status"],
+      _count: { _all: true },
+      where: { ...where, status: undefined },
+    }),
   ])
+
+  const totalPorStatus = new Map(contagensPorStatus.map((r) => [r.status, r._count._all]))
 
   const resumo = {
     total,
-    pendentes: await prisma.user.count({ where: { ...where, status: "PENDENTE" } }),
-    aprovados: await prisma.user.count({ where: { ...where, status: "APROVADO" } }),
-    rejeitados: await prisma.user.count({ where: { ...where, status: "REJEITADO" } }),
+    pendentes: totalPorStatus.get("PENDENTE") ?? 0,
+    aprovados: totalPorStatus.get("APROVADO") ?? 0,
+    rejeitados: totalPorStatus.get("REJEITADO") ?? 0,
   }
 
   return NextResponse.json({ 

@@ -42,7 +42,7 @@ import styled, { keyframes } from "styled-components"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useInfiniteQuery } from "@tanstack/react-query"
 import { theme, hexToRgba } from "@/styles/theme"
-import { createClient } from "@/lib/client"
+import { createClient } from "@/lib/supabase/client"
 import {
   Search,
   Plus,

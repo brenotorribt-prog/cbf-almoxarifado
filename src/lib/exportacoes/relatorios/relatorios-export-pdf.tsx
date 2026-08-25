@@ -3,28 +3,21 @@
 // Gerador PDF do relatório detalhado de movimentações.
 // Segue o padrão de src/lib/compras-export-pdf.tsx (@react-pdf/renderer,
 // renderToBuffer dinâmico, Helvetica).
+// Cabeçalho e rodapé seguem o padrão visual do ReciboAssinaturaPDF
+// (logo no topo, logo + data de geração no rodapé fixo).
 
-import { StyleSheet, View, Text, Document, Page } from "@react-pdf/renderer"
+import { StyleSheet, View, Text, Document, Page, Image } from "@react-pdf/renderer"
+import { pdfStyles } from "@/lib/pdf/pdf-utils"
+import { carregarLogosPdf } from "@/lib/pdf/pdf-logos-server"
 import {
   LABEL_TIPO_MOV,
   formatarDataSimples,
   formatarDataHoraExportacao,
+  type EstoquePessoaRow,
   type MovimentacaoDetalhadaRow,
 } from "./relatorios"
 
 const styles = StyleSheet.create({
-  page: {
-    padding: 30,
-    fontFamily: "Helvetica",
-    fontSize: 8,
-    backgroundColor: "#ffffff",
-  },
-  titulo: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 4,
-    color: "#1a1a1a",
-  },
   subtitulo: {
     fontSize: 10,
     color: "#666666",
@@ -103,12 +96,29 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingVertical: 8,
   },
-  rodape: {
+  // ===== Seção "Estoque por Pessoa" =====
+  secaoTitulo: {
+    fontSize: 11,
+    fontWeight: "bold",
+    color: "#1a1a1a",
+    marginTop: 18,
+    marginBottom: 2,
+  },
+  secaoDescricao: {
     fontSize: 7,
     color: "#666666",
-    marginTop: 8,
-    textAlign: "right",
+    marginBottom: 6,
   },
+  // Larguras das colunas da tabela por pessoa
+  pPessoa: { width: "15%" },
+  pSetor: { width: "12%" },
+  pMaterial: { width: "23%" },
+  pCodigo: { width: "10%" },
+  pUnidade: { width: "6%" },
+  pRetirado: { width: "9%", textAlign: "right" },
+  pDevolvido: { width: "9%", textAlign: "right" },
+  pConsumido: { width: "8%", textAlign: "right" },
+  pSaldo: { width: "8%", textAlign: "right", fontWeight: "bold" },
 })
 
 interface PDFRelatorioProps {
@@ -118,7 +128,17 @@ interface PDFRelatorioProps {
   filtros?: {
     categoriaNome?: string
     tipo?: string
+    pessoa?: string
   }
+  pessoas?: EstoquePessoaRow[]
+  logoUrl?: string
+  footerLogoUrl?: string
+}
+
+/** Formata quantidade removendo zeros à direita (2.5 -> "2,5" / 3 -> "3"). */
+function fmtQtd(n: number): string {
+  const arredondado = Number(n.toFixed(3))
+  return String(arredondado).replace(".", ",")
 }
 
 function ResumoKpis({ movimentacoes }: { movimentacoes: MovimentacaoDetalhadaRow[] }) {
@@ -144,11 +164,27 @@ function ResumoKpis({ movimentacoes }: { movimentacoes: MovimentacaoDetalhadaRow
   )
 }
 
-export function PDFRelatorio({ movimentacoes, dataInicio, dataFim, filtros = {} }: PDFRelatorioProps) {
+export function PDFRelatorio({
+  movimentacoes,
+  dataInicio,
+  dataFim,
+  filtros = {},
+  pessoas = [],
+  logoUrl,
+  footerLogoUrl,
+}: PDFRelatorioProps) {
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
-        <Text style={styles.titulo}>Relatório de Movimentações</Text>
+      <Page size="A4" style={pdfStyles.page}>
+        {/* CABEÇALHO COM LOGO (padrão RecibAssinaturaPDF) */}
+        <View style={pdfStyles.header}>
+          {logoUrl && <Image src={logoUrl} style={pdfStyles.logo} />}
+          <View style={pdfStyles.headerText}>
+            <Text style={pdfStyles.title}>Relatório de Movimentações</Text>
+            <Text style={pdfStyles.subtitle}>Sistema de Almoxarifado CBF</Text>
+          </View>
+        </View>
+
         <Text style={styles.subtitulo}>
           Período: {formatarDataSimples(dataInicio)} a {formatarDataSimples(dataFim)}
         </Text>
@@ -157,6 +193,7 @@ export function PDFRelatorio({ movimentacoes, dataInicio, dataFim, filtros = {} 
           <Text>
             {filtros.categoriaNome ? `Categoria: ${filtros.categoriaNome}  •  ` : ""}
             {filtros.tipo ? `Tipo: ${LABEL_TIPO_MOV[filtros.tipo] ?? filtros.tipo}  •  ` : ""}
+            {filtros.pessoa ? `Pessoa: ${filtros.pessoa}  •  ` : ""}
             {movimentacoes.length} movimentaç{movimentacoes.length !== 1 ? "ões" : "ão"} no período
           </Text>
         </View>
@@ -196,12 +233,54 @@ export function PDFRelatorio({ movimentacoes, dataInicio, dataFim, filtros = {} 
                 <Text style={[styles.celTexto, styles.colUsuario]}>{mov.usuarioNome}</Text>
               </View>
             ))}
-
-            <Text style={styles.rodape}>
-              Relatório gerado em {formatarDataHoraExportacao(new Date())}
-            </Text>
           </>
         )}
+
+        {/* ESTOQUE POR PESSOA */}
+        {pessoas.length > 0 && (
+          <>
+            <Text style={styles.secaoTitulo}>Estoque por Pessoa</Text>
+            <Text style={styles.secaoDescricao}>
+              O que cada pessoa retirou no período, o que devolveu e o saldo em posse.
+            </Text>
+
+            <View style={styles.tabelaHeader} fixed>
+              <Text style={[styles.headerTexto, styles.pPessoa]}>Pessoa</Text>
+              <Text style={[styles.headerTexto, styles.pSetor]}>Setor / Função</Text>
+              <Text style={[styles.headerTexto, styles.pMaterial]}>Material</Text>
+              <Text style={[styles.headerTexto, styles.pCodigo]}>Código</Text>
+              <Text style={[styles.headerTexto, styles.pUnidade]}>Un.</Text>
+              <Text style={[styles.headerTexto, styles.pRetirado]}>Retirado</Text>
+              <Text style={[styles.headerTexto, styles.pDevolvido]}>Devolvido</Text>
+              <Text style={[styles.headerTexto, styles.pConsumido]}>Consumido</Text>
+              <Text style={[styles.headerTexto, styles.pSaldo]}>Em posse</Text>
+            </View>
+
+            {pessoas.map((p) => (
+              <View key={`${p.nome}-${p.materialId}`} style={styles.tabelaRow} wrap={false}>
+                <Text style={[styles.celTexto, styles.pPessoa]}>{p.nome}</Text>
+                <Text style={[styles.celTexto, styles.pSetor]}>
+                  {[p.setor, p.funcao].filter(Boolean).join(" / ") || "—"}
+                </Text>
+                <Text style={[styles.celTexto, styles.pMaterial]}>{p.materialNome}</Text>
+                <Text style={[styles.celTexto, styles.pCodigo]}>{p.codigoInterno}</Text>
+                <Text style={[styles.celTexto, styles.pUnidade]}>{p.unidadeSigla}</Text>
+                <Text style={[styles.celTexto, styles.pRetirado]}>{fmtQtd(p.retirado)}</Text>
+                <Text style={[styles.celTexto, styles.pDevolvido]}>{fmtQtd(p.devolvido)}</Text>
+                <Text style={[styles.celTexto, styles.pConsumido]}>{fmtQtd(p.consumido)}</Text>
+                <Text style={[styles.celTexto, styles.pSaldo]}>{fmtQtd(p.saldo)}</Text>
+              </View>
+            ))}
+          </>
+        )}
+
+        {/* RODAPÉ FIXO COM LOGO (padrão RecibAssinaturaPDF) */}
+        <View style={pdfStyles.footer} fixed>
+          {footerLogoUrl && <Image src={footerLogoUrl} style={pdfStyles.footerLogo} />}
+          <Text style={pdfStyles.footerText}>
+            Documento gerado em {formatarDataHoraExportacao(new Date())}
+          </Text>
+        </View>
       </Page>
     </Document>
   )
@@ -211,9 +290,11 @@ export async function gerarPdfRelatorio(
   movimentacoes: MovimentacaoDetalhadaRow[],
   dataInicio: Date,
   dataFim: Date,
-  filtros?: { categoriaNome?: string; tipo?: string }
+  filtros?: { categoriaNome?: string; tipo?: string; pessoa?: string },
+  pessoas: EstoquePessoaRow[] = []
 ): Promise<Buffer> {
   const { renderToBuffer } = await import("@react-pdf/renderer")
+  const { logoUrl, footerLogoUrl } = carregarLogosPdf()
 
   const pdf = (
     <PDFRelatorio
@@ -221,6 +302,9 @@ export async function gerarPdfRelatorio(
       dataInicio={dataInicio}
       dataFim={dataFim}
       filtros={filtros}
+      pessoas={pessoas}
+      logoUrl={logoUrl}
+      footerLogoUrl={footerLogoUrl}
     />
   )
   const buffer = await renderToBuffer(pdf)

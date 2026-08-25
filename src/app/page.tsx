@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { createClient } from "@/lib/server"
+import { createClient } from "@/lib/supabase/server"
 import LandingClient from "@/components/landing/landing-client"
 
 export default async function Home() {

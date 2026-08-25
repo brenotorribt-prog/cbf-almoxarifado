@@ -8,7 +8,7 @@
 // src/lib/relatorios.ts para serem reaproveitadas pela exportação.
 
 import { NextRequest, NextResponse } from "next/server"
-import { requireAuth } from "@/lib/require-role"
+import { requireAuth } from "@/lib/auth/require-role"
 import {
   parseFiltrosRelatorio,
   calcularGranularidade,
@@ -17,7 +17,8 @@ import {
   buscarTopMateriais,
   buscarCategoriasMovimentadas,
   buscarResumoEstoqueAtual,
-} from "@/lib/relatorios"
+  buscarEstoquePorPessoa,
+} from "@/lib/exportacoes/relatorios/relatorios"
 
 export async function GET(request: NextRequest) {
   const guard = await requireAuth()
@@ -33,13 +34,15 @@ export async function GET(request: NextRequest) {
   const granularidade = calcularGranularidade(filtros.dataInicio, filtros.dataFim)
 
   try {
-    const [resumoPorTipo, serie, topMateriais, categorias, estoqueAtual] = await Promise.all([
-      buscarResumoPorTipo(filtros),
-      buscarSerieTemporal(filtros, granularidade),
-      buscarTopMateriais(filtros),
-      buscarCategoriasMovimentadas(filtros),
-      buscarResumoEstoqueAtual(),
-    ])
+    const [resumoPorTipo, serie, topMateriais, categorias, estoqueAtual, pessoas] =
+      await Promise.all([
+        buscarResumoPorTipo(filtros),
+        buscarSerieTemporal(filtros, granularidade),
+        buscarTopMateriais(filtros),
+        buscarCategoriasMovimentadas(filtros),
+        buscarResumoEstoqueAtual(),
+        buscarEstoquePorPessoa(filtros),
+      ])
 
     return NextResponse.json({
       periodo: {
@@ -56,6 +59,7 @@ export async function GET(request: NextRequest) {
       topMateriais,
       categorias,
       estoqueAtual,
+      pessoas,
     })
   } catch (err) {
     console.error("Erro ao gerar relatório:", err)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireRole } from "@/lib/require-role"
+import { requireRole } from "@/lib/auth/require-role"
 
 const descarteSchema = z.object({
   motivo: z.string().trim().min(3, "Informe o motivo do descarte/perda").max(300),

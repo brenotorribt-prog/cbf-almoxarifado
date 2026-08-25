@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
-import { requireAuth, requireRole } from "@/lib/require-role"
+import { requireAuth, requireRole } from "@/lib/auth/require-role"
 import { Prisma } from "@prisma/client"
 import { DeleteObjectCommand } from "@aws-sdk/client-s3"
-import { r2, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/r2"
+import { r2, R2_BUCKET, R2_PUBLIC_URL } from "@/lib/storage/r2"
 
 // GET /api/materiais/[id] — ficha completa de um material
 export async function GET(

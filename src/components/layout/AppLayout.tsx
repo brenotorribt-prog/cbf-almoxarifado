@@ -3,7 +3,7 @@
 import type { ReactNode } from "react"
 import styled from "styled-components"
 import Sidebar from "./SideBar"
-import { SidebarProvider, useSidebar } from "./Sidebarcontext"
+import { SidebarProvider, useSidebar } from "./SidebarContext"
 
 const Shell = styled.div`
   display: flex;
