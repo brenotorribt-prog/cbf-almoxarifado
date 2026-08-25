@@ -6,8 +6,8 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const ADMIN_EMAIL = "admin@cbf.com.br"
-const ADMIN_SENHA = "admin@2026"
+const ADMIN_EMAIL = "Email do Admin" // Substitua pelo email desejado
+const ADMIN_SENHA = "Senha do Admin" // Substitua pela senha desejada
 
 async function main() {
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
@@ -21,7 +21,7 @@ async function main() {
     where: { email: ADMIN_EMAIL },
     update: {},
     create: {
-      id: data.user.id, // mesmo id do Supabase Auth — sem tabela de mapeamento
+      id: data.user.id,
       name: "Administrador",
       nome: "Administrador",
       sobrenome: "Sistema",
