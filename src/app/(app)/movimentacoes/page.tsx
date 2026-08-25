@@ -568,11 +568,11 @@ export default function MovimentacoesPage() {
                           <RowMeta>{formatarDataHora(mov.createdAt)}</RowMeta>
                         </RowInfo>
 
-                        {/* Devolução de sobrante (só em saídas com solicitante) */}
-                        {mov.tipo === "SAIDA" &&
-                          mov.solicitanteNome &&
-                          PAPEIS_GESTAO_ESTOQUE.has(role) && (
-                            <AcoesLinha style={{ justifyContent: 'flex-end' }}>
+                        {/* Ações — devolução (se aplicável) + PDF, tudo numa única coluna */}
+                        <AcoesLinha style={{ justifyContent: 'flex-end' }}>
+                          {mov.tipo === "SAIDA" &&
+                            mov.solicitanteNome &&
+                            PAPEIS_GESTAO_ESTOQUE.has(role) && (
                               <AcaoIconButton
                                 title="Registrar devolução (material não utilizado)"
                                 $cor={theme.colors.status.warning}
@@ -582,11 +582,7 @@ export default function MovimentacoesPage() {
                               >
                                 <Undo2 size={15} />
                               </AcaoIconButton>
-                            </AcoesLinha>
-                          )}
-
-                        {/* Botões de PDF */}
-                        <AcoesLinha style={{ justifyContent: 'flex-end' }}>
+                            )}
                           <AcaoIconButton
                             title="Visualizar PDF"
                             $cor={theme.colors.primary.vivid}
@@ -1297,7 +1293,7 @@ const ListContainer = styled.div`
 
 const TableHeader = styled.div`
   display: grid;
-  grid-template-columns: 130px minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1fr) 140px 100px;
+  grid-template-columns: 130px minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1fr) 140px 132px;
   align-items: center;
   gap: ${({ theme }) => theme.spacing[3]};
   padding: 0 ${({ theme }) => theme.spacing[4]};
@@ -1381,7 +1377,7 @@ const RowBase = styled.div`
 `
 
 const RowHistorico = styled(RowBase)`
-  grid-template-columns: 130px minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1fr) 140px 100px;
+  grid-template-columns: 130px minmax(0, 1.4fr) minmax(0, 1.1fr) minmax(0, 1fr) 140px 132px;
 `
 
 const RowEmprestimo = styled(RowBase)`
