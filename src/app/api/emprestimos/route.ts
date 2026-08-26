@@ -97,9 +97,10 @@ const itemSchema = z.object({
 
 const criarEmprestimoSchema = z.object({
   itens: z.array(itemSchema).min(1, "Selecione ao menos um item"),
-  solicitanteNome: z.string().trim().min(2).max(150),
-  solicitanteSetor: z.string().trim().max(100).optional().nullable(),
-  solicitanteFuncao: z.string().trim().max(100).optional().nullable(),
+  // Quem recebe vem SEMPRE do cadastro leve (PessoaAtendida), via
+  // autocomplete — sem texto livre. Nome/setor/função são absorvidos do
+  // cadastro no servidor e gravados como snapshot no empréstimo.
+  pessoaAtendidaId: z.string().trim().min(1, "Selecione quem vai receber (cadastro de pessoas atendidas)"),
   dataPrevistaDevolucao: z.coerce.date(),
   observacoes: z.string().trim().max(500).optional().nullable(),
 })
@@ -121,6 +122,19 @@ export async function POST(request: NextRequest) {
   }
 
   const dados = parsed.data
+
+  // A pessoa precisa existir no cadastro leve — nome/setor/função são
+  // absorvidos dela, nunca aceitos como texto livre do payload.
+  const pessoaAtendida = await prisma.pessoaAtendida.findUnique({
+    where: { id: dados.pessoaAtendidaId },
+    select: { id: true, nome: true, setor: true, funcao: true },
+  })
+  if (!pessoaAtendida) {
+    return NextResponse.json(
+      { error: "Pessoa atendida não encontrada. Selecione um cadastro existente." },
+      { status: 400 }
+    )
+  }
 
   if (dados.dataPrevistaDevolucao <= new Date()) {
     return NextResponse.json(
@@ -185,9 +199,10 @@ export async function POST(request: NextRequest) {
             data: {
               materialId: material.id,
               quantidade: item.quantidade,
-              solicitanteNome: dados.solicitanteNome,
-              solicitanteSetor: dados.solicitanteSetor || null,
-              solicitanteFuncao: dados.solicitanteFuncao || null,
+              pessoaAtendidaId: pessoaAtendida.id,
+              solicitanteNome: pessoaAtendida.nome,
+              solicitanteSetor: pessoaAtendida.setor,
+              solicitanteFuncao: pessoaAtendida.funcao,
               loteId,
               dataPrevistaDevolucao: dados.dataPrevistaDevolucao,
               observacoes: dados.observacoes || null,
@@ -210,9 +225,10 @@ export async function POST(request: NextRequest) {
           data: {
             materialId: material.id,
             quantidade: item.quantidade,
-            solicitanteNome: dados.solicitanteNome,
-            solicitanteSetor: dados.solicitanteSetor || null,
-            solicitanteFuncao: dados.solicitanteFuncao || null,
+            pessoaAtendidaId: pessoaAtendida.id,
+            solicitanteNome: pessoaAtendida.nome,
+            solicitanteSetor: pessoaAtendida.setor,
+            solicitanteFuncao: pessoaAtendida.funcao,
             loteId,
             dataPrevistaDevolucao: dados.dataPrevistaDevolucao,
             observacoes: dados.observacoes || null,
@@ -232,7 +248,8 @@ export async function POST(request: NextRequest) {
             quantidade: item.quantidade,
             quantidadeAnterior: estoqueAnterior,
             quantidadeAtual: estoqueNovo,
-            motivo: `Empréstimo para ${dados.solicitanteNome}`,
+            motivo: `Empréstimo para ${pessoaAtendida.nome}`,
+            pessoaAtendidaId: pessoaAtendida.id,
             usuarioId: responsavelId,
             emprestimoId: emprestimo.id,
           },

@@ -16,7 +16,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import styled, { keyframes } from "styled-components"
-import { theme, hexToRgba } from "@/styles/theme"
+import { theme } from "@/styles/theme"
 import {
   X,
   Check,
@@ -30,12 +30,9 @@ import {
   CheckCircle2,
   Clock,
   User,
-  Building2,
-  Briefcase,
   CalendarClock,
   Printer, // ← ADICIONADO
 } from "lucide-react"
-import { downloadPDF } from "@/lib/pdf/pdf-helper"
 
 // =====================================================================
 // TIPOS
@@ -48,6 +45,13 @@ interface MaterialBusca {
   estoqueAtual: number
   requerAprovacao: boolean
   unidadeMedida: { id: string; sigla: string; nome: string; tipo?: "INTEIRA" | "FRACIONADA" }
+}
+
+interface PessoaBusca {
+  id: string
+  nome: string
+  setor: string
+  funcao: string
 }
 
 interface ItemEmprestimo {
@@ -196,16 +200,6 @@ const SecaoTitulo = styled.h3`
     flex: 1;
     height: 1px;
     background: ${({ theme }) => theme.colors.surface.border};
-  }
-`
-
-const Grid2 = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: ${({ theme }) => theme.spacing[4]};
-
-  @media (max-width: 560px) {
-    grid-template-columns: 1fr;
   }
 `
 
@@ -574,6 +568,49 @@ const ActionButton = styled.button<{ $variant: "primary" | "ghost" }>`
   }
 `
 
+// -------- pessoa selecionada / busca de pessoas --------
+
+const PessoaSelecionadaBox = styled.div`
+  ${glassCardStyles}
+  background: ${({ theme }) => theme.colors.surface.glass};
+  padding: ${({ theme }) => theme.spacing[3]} ${({ theme }) => theme.spacing[4]};
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: ${({ theme }) => theme.spacing[3]};
+`
+
+const PessoaSelecionadaInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  strong {
+    font-size: ${({ theme }) => theme.typography.fontSize.sm};
+    color: ${({ theme }) => theme.colors.text.primary};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  span {
+    font-size: ${({ theme }) => theme.typography.fontSize.xs};
+    color: ${({ theme }) => theme.colors.text.muted};
+  }
+`
+
+const TrocarPessoaButton = styled.button`
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.primary.vivid};
+  white-space: nowrap;
+  flex-shrink: 0;
+
+  &:hover {
+    text-decoration: underline;
+  }
+`
+
 // =====================================================================
 // COMPONENTE
 // =====================================================================
@@ -589,10 +626,13 @@ export default function NovoEmprestimoModal({ onClose, onSalvo }: NovoEmprestimo
   // itens montados
   const [itens, setItens] = useState<ItemEmprestimo[]>([])
 
-  // dados do solicitante / prazo
-  const [solicitanteNome, setSolicitanteNome] = useState("")
-  const [solicitanteSetor, setSolicitanteSetor] = useState("")
-  const [solicitanteFuncao, setSolicitanteFuncao] = useState("")
+  // dados do solicitante / prazo — quem recebe vem do cadastro leve
+  const [termoBuscaPessoa, setTermoBuscaPessoa] = useState("")
+  const [resultadosPessoas, setResultadosPessoas] = useState<PessoaBusca[]>([])
+  const [buscandoPessoa, setBuscandoPessoa] = useState(false)
+  const [dropdownPessoaAberto, setDropdownPessoaAberto] = useState(false)
+  const buscaPessoaRef = useRef<HTMLDivElement>(null)
+  const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaBusca | null>(null)
   const [dataPrevistaDevolucao, setDataPrevistaDevolucao] = useState(amanha())
   const [observacoes, setObservacoes] = useState("")
 
@@ -615,9 +655,9 @@ async function handleImprimirRecibo() {
     await gerarEAbrirRecibo({
       tipoDocumento: "EMPRESTIMO",
       data: new Date(),
-      solicitanteNome: solicitanteNome.trim(),
-      solicitanteSetor: solicitanteSetor.trim() || null,
-      solicitanteFuncao: solicitanteFuncao.trim() || null,
+      solicitanteNome: pessoaSelecionada?.nome ?? "",
+      solicitanteSetor: pessoaSelecionada?.setor ?? null,
+      solicitanteFuncao: pessoaSelecionada?.funcao ?? null,
       itens: itens.map((i) => ({
         nome: i.material.nome,
         codigoInterno: i.material.codigoInterno,
@@ -637,10 +677,7 @@ async function handleImprimirRecibo() {
   // busca debounced (mesmo endpoint leve do modal de movimentação)
   // ---------------------------------------------------------------
   useEffect(() => {
-    if (!termoBusca.trim() || termoBusca.trim().length < 2) {
-      setResultadosBusca([])
-      return
-    }
+    if (!termoBusca.trim() || termoBusca.trim().length < 2) return
 
     const t = setTimeout(async () => {
       setBuscando(true)
@@ -670,6 +707,54 @@ async function handleImprimirRecibo() {
     document.addEventListener("mousedown", handleClickFora)
     return () => document.removeEventListener("mousedown", handleClickFora)
   }, [])
+
+  // ---------------------------------------------------------------
+  // busca debounced de pessoas atendidas (cadastro leve)
+  // ---------------------------------------------------------------
+  useEffect(() => {
+    if (!termoBuscaPessoa.trim() || termoBuscaPessoa.trim().length < 2 || pessoaSelecionada) return
+
+    const t = setTimeout(async () => {
+      setBuscandoPessoa(true)
+      try {
+        const params = new URLSearchParams()
+        params.set("busca", termoBuscaPessoa.trim())
+        const res = await fetch(`/api/pessoas-atendidas?${params.toString()}`)
+        const dados = await res.json()
+        setResultadosPessoas(dados.pessoas ?? [])
+      } catch {
+        setResultadosPessoas([])
+      } finally {
+        setBuscandoPessoa(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(t)
+  }, [termoBuscaPessoa, pessoaSelecionada])
+
+  // fecha o dropdown de pessoas ao clicar fora
+  useEffect(() => {
+    function handleClickForaPessoa(e: MouseEvent) {
+      if (buscaPessoaRef.current && !buscaPessoaRef.current.contains(e.target as Node)) {
+        setDropdownPessoaAberto(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickForaPessoa)
+    return () => document.removeEventListener("mousedown", handleClickForaPessoa)
+  }, [])
+
+  function selecionarPessoa(pessoa: PessoaBusca) {
+    setPessoaSelecionada(pessoa)
+    setTermoBuscaPessoa("")
+    setResultadosPessoas([])
+    setDropdownPessoaAberto(false)
+    setErrosCampo((prev) => Object.fromEntries(Object.entries(prev).filter(([campo]) => campo !== "pessoa")))
+  }
+
+  function trocarPessoa() {
+    setPessoaSelecionada(null)
+    setTermoBuscaPessoa("")
+  }
 
   function adicionarItem(material: MaterialBusca) {
     setItens((prev) => [...prev, { material, quantidade: "1" }])
@@ -716,7 +801,7 @@ async function handleImprimirRecibo() {
       }
     }
 
-    if (solicitanteNome.trim().length < 2) erros.solicitanteNome = "Informe o nome de quem vai receber."
+    if (!pessoaSelecionada) erros.pessoa = "Selecione quem vai receber (cadastro de pessoas atendidas)."
 
     if (!dataPrevistaDevolucao) {
       erros.dataPrevistaDevolucao = "Informe a data prevista de devolução."
@@ -743,9 +828,7 @@ async function handleImprimirRecibo() {
           materialId: i.material.id,
           quantidade: numeroOuNull(i.quantidade),
         })),
-        solicitanteNome: solicitanteNome.trim(),
-        solicitanteSetor: solicitanteSetor.trim() || null,
-        solicitanteFuncao: solicitanteFuncao.trim() || null,
+        pessoaAtendidaId: pessoaSelecionada?.id ?? "",
         dataPrevistaDevolucao: new Date(dataPrevistaDevolucao).toISOString(),
         observacoes: observacoes.trim() || null,
       }
@@ -886,6 +969,7 @@ async function handleImprimirRecibo() {
                 onChange={(e) => {
                   setTermoBusca(e.target.value)
                   setDropdownAberto(true)
+                  if (e.target.value.trim().length < 2) setResultadosBusca([])
                 }}
                 onFocus={() => setDropdownAberto(true)}
                 disabled={bloqueado}
@@ -976,53 +1060,70 @@ async function handleImprimirRecibo() {
           )}
         </Secao>
 
-        {/* ---------------- Solicitante ---------------- */}
+        {/* ---------------- Quem vai receber (cadastro leve) ---------------- */}
         <Secao>
           <SecaoTitulo>Quem vai receber</SecaoTitulo>
 
           <FieldGroup>
-            <Label htmlFor="solicitanteNome">
-              <User size={12} /> Nome <Obrigatorio>*</Obrigatorio>
+            <Label>
+              <User size={12} /> Pessoa do cadastro <Obrigatorio>*</Obrigatorio>
             </Label>
-            <Input
-              id="solicitanteNome"
-              placeholder="Nome completo"
-              value={solicitanteNome}
-              onChange={(e) => setSolicitanteNome(e.target.value)}
-              maxLength={150}
-              disabled={bloqueado}
-            />
-            {errosCampo.solicitanteNome && <ErrorText>{errosCampo.solicitanteNome}</ErrorText>}
-          </FieldGroup>
 
-          <Grid2>
-            <FieldGroup>
-              <Label htmlFor="solicitanteSetor">
-                <Building2 size={12} /> Setor
-              </Label>
-              <Input
-                id="solicitanteSetor"
-                placeholder="Ex: Manutenção"
-                value={solicitanteSetor}
-                onChange={(e) => setSolicitanteSetor(e.target.value)}
-                maxLength={100}
-                disabled={bloqueado}
-              />
-            </FieldGroup>
-            <FieldGroup>
-              <Label htmlFor="solicitanteFuncao">
-                <Briefcase size={12} /> Função
-              </Label>
-              <Input
-                id="solicitanteFuncao"
-                placeholder="Ex: Eletricista"
-                value={solicitanteFuncao}
-                onChange={(e) => setSolicitanteFuncao(e.target.value)}
-                maxLength={100}
-                disabled={bloqueado}
-              />
-            </FieldGroup>
-          </Grid2>
+            {pessoaSelecionada ? (
+              <PessoaSelecionadaBox>
+                <PessoaSelecionadaInfo>
+                  <strong>{pessoaSelecionada.nome}</strong>
+                  <span>
+                    {pessoaSelecionada.setor} · {pessoaSelecionada.funcao}
+                  </span>
+                </PessoaSelecionadaInfo>
+                <TrocarPessoaButton type="button" onClick={trocarPessoa} disabled={bloqueado}>
+                  Trocar
+                </TrocarPessoaButton>
+              </PessoaSelecionadaBox>
+            ) : (
+              <BuscaWrapper ref={buscaPessoaRef}>
+                <BuscaInputBox>
+                  <Search size={16} />
+                  <input
+                    placeholder="Buscar pessoa cadastrada por nome..."
+                    value={termoBuscaPessoa}
+                    onChange={(e) => {
+                      setTermoBuscaPessoa(e.target.value)
+                      setDropdownPessoaAberto(true)
+                      if (e.target.value.trim().length < 2) setResultadosPessoas([])
+                    }}
+                    onFocus={() => setDropdownPessoaAberto(true)}
+                    disabled={bloqueado}
+                  />
+                  {buscandoPessoa && (
+                    <Loader2 size={14} className="spin" style={{ animation: "spin 0.7s linear infinite" }} />
+                  )}
+                </BuscaInputBox>
+
+                {dropdownPessoaAberto && termoBuscaPessoa.trim() && (
+                  <BuscaDropdown>
+                    {resultadosPessoas.length === 0 && !buscandoPessoa ? (
+                      <BuscaVazio>
+                        <User size={20} />
+                        Nenhuma pessoa encontrada — cadastre em Categorias › Pessoas atendidas.
+                      </BuscaVazio>
+                    ) : (
+                      resultadosPessoas.map((p) => (
+                        <BuscaItem key={p.id} type="button" onClick={() => selecionarPessoa(p)}>
+                          <BuscaItemNome>{p.nome}</BuscaItemNome>
+                          <BuscaItemMeta>
+                            {p.setor} · {p.funcao}
+                          </BuscaItemMeta>
+                        </BuscaItem>
+                      ))
+                    )}
+                  </BuscaDropdown>
+                )}
+              </BuscaWrapper>
+            )}
+            {errosCampo.pessoa && <ErrorText>{errosCampo.pessoa}</ErrorText>}
+          </FieldGroup>
         </Secao>
 
         {/* ---------------- Prazo / observações ---------------- */}

@@ -15,7 +15,7 @@
  * de ajuda troca dinamicamente pra deixar isso claro.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import styled, { keyframes } from "styled-components"
 import { theme, hexToRgba } from "@/styles/theme"
 import {
@@ -30,11 +30,8 @@ import {
   PackageSearch,
   Info,
   User,
-  Building2,
-  Briefcase,
   Printer, // ← adicionado
 } from "lucide-react"
-import { downloadPDF } from "@/lib/pdf/pdf-helper"
 
 // =====================================================================
 // TIPOS
@@ -49,6 +46,13 @@ interface MaterialBusca {
   estoqueAtual: number
   requerAprovacao: boolean
   unidadeMedida: { id: string; sigla: string; nome: string; tipo?: "INTEIRA" | "FRACIONADA" }
+}
+
+interface PessoaBusca {
+  id: string
+  nome: string
+  setor: string
+  funcao: string
 }
 
 interface NovaMovimentacaoModalProps {
@@ -468,12 +472,47 @@ const AvisoInfo = styled.div`
   }
 `
 
-// -------- grid para campos lado a lado --------
+// -------- pessoa selecionada / busca de pessoas --------
 
-const Grid2 = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+const PessoaSelecionadaBox = styled.div`
+  ${glassCardStyles}
+  background: ${({ theme }) => theme.colors.surface.glass};
+  padding: ${({ theme }) => theme.spacing[3]} ${({ theme }) => theme.spacing[4]};
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: ${({ theme }) => theme.spacing[3]};
+`
+
+const PessoaSelecionadaInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  strong {
+    font-size: ${({ theme }) => theme.typography.fontSize.sm};
+    color: ${({ theme }) => theme.colors.text.primary};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  span {
+    font-size: ${({ theme }) => theme.typography.fontSize.xs};
+    color: ${({ theme }) => theme.colors.text.muted};
+  }
+`
+
+const TrocarPessoaButton = styled.button`
+  font-size: ${({ theme }) => theme.typography.fontSize.xs};
+  color: ${({ theme }) => theme.colors.primary.vivid};
+  white-space: nowrap;
+  flex-shrink: 0;
+
+  &:hover {
+    text-decoration: underline;
+  }
 `
 
 // -------- rodapé --------
@@ -541,9 +580,14 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
   const [quantidade, setQuantidade] = useState("")
   const [motivo, setMotivo] = useState("")
   const [documentoReferencia, setDocumentoReferencia] = useState("")
-  const [solicitanteNome, setSolicitanteNome] = useState("")
-  const [solicitanteSetor, setSolicitanteSetor] = useState("")
-  const [solicitanteFuncao, setSolicitanteFuncao] = useState("")
+
+  // pessoa do cadastro leve — autocomplete obrigatório na saída
+  const [termoBuscaPessoa, setTermoBuscaPessoa] = useState("")
+  const [resultadosPessoas, setResultadosPessoas] = useState<PessoaBusca[]>([])
+  const [buscandoPessoa, setBuscandoPessoa] = useState(false)
+  const [dropdownPessoaAberto, setDropdownPessoaAberto] = useState(false)
+  const buscaPessoaRef = useRef<HTMLDivElement>(null)
+  const [pessoaSelecionada, setPessoaSelecionada] = useState<PessoaBusca | null>(null)
 
   const [salvando, setSalvando] = useState(false)
   const [erroGeral, setErroGeral] = useState<string | null>(null)
@@ -560,9 +604,9 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
       await gerarEAbrirRecibo({
         tipoDocumento: "SAIDA",
         data: new Date(),
-        solicitanteNome: solicitanteNome.trim() || "Não informado",
-        solicitanteSetor: solicitanteSetor.trim() || null,
-        solicitanteFuncao: solicitanteFuncao.trim() || null,
+        solicitanteNome: pessoaSelecionada?.nome ?? "Não informado",
+        solicitanteSetor: pessoaSelecionada?.setor ?? null,
+        solicitanteFuncao: pessoaSelecionada?.funcao ?? null,
         itens: [
           {
             nome: materialSelecionado.nome,
@@ -583,10 +627,7 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
   // busca debounced
   // ---------------------------------------------------------------
   useEffect(() => {
-    if (!termoBusca.trim() || termoBusca.trim().length < 2 || materialSelecionado) {
-      setResultadosBusca([])
-      return
-    }
+    if (!termoBusca.trim() || termoBusca.trim().length < 2 || materialSelecionado) return
 
     const t = setTimeout(async () => {
       setBuscando(true)
@@ -617,6 +658,54 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
     document.addEventListener("mousedown", handleClickFora)
     return () => document.removeEventListener("mousedown", handleClickFora)
   }, [])
+
+  // ---------------------------------------------------------------
+  // busca debounced de pessoas atendidas (cadastro leve)
+  // ---------------------------------------------------------------
+  useEffect(() => {
+    if (!termoBuscaPessoa.trim() || termoBuscaPessoa.trim().length < 2 || pessoaSelecionada) return
+
+    const t = setTimeout(async () => {
+      setBuscandoPessoa(true)
+      try {
+        const params = new URLSearchParams()
+        params.set("busca", termoBuscaPessoa.trim())
+        const res = await fetch(`/api/pessoas-atendidas?${params.toString()}`)
+        const dados = await res.json()
+        setResultadosPessoas(dados.pessoas ?? [])
+      } catch {
+        setResultadosPessoas([])
+      } finally {
+        setBuscandoPessoa(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(t)
+  }, [termoBuscaPessoa, pessoaSelecionada])
+
+  // fecha o dropdown de pessoas ao clicar fora
+  useEffect(() => {
+    function handleClickForaPessoa(e: MouseEvent) {
+      if (buscaPessoaRef.current && !buscaPessoaRef.current.contains(e.target as Node)) {
+        setDropdownPessoaAberto(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickForaPessoa)
+    return () => document.removeEventListener("mousedown", handleClickForaPessoa)
+  }, [])
+
+  function selecionarPessoa(pessoa: PessoaBusca) {
+    setPessoaSelecionada(pessoa)
+    setTermoBuscaPessoa("")
+    setResultadosPessoas([])
+    setDropdownPessoaAberto(false)
+    setErrosCampo((prev) => Object.fromEntries(Object.entries(prev).filter(([campo]) => campo !== "pessoa")))
+  }
+
+  function trocarPessoa() {
+    setPessoaSelecionada(null)
+    setTermoBuscaPessoa("")
+  }
 
   function selecionarMaterial(material: MaterialBusca) {
     setMaterialSelecionado(material)
@@ -657,6 +746,10 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
     }
     if (motivo.trim().length < 1) erros.motivo = "Motivo é obrigatório."
 
+    if (tipo === "SAIDA" && !pessoaSelecionada) {
+      erros.pessoa = "Saídas exigem selecionar quem está recebendo o material (cadastro de pessoas atendidas)."
+    }
+
     if (materialSelecionado && quantidadeNumerica !== null && !aceitaFracao && quantidadeNumerica % 1 !== 0) {
       erros.quantidade = `A unidade "${materialSelecionado.unidadeMedida.nome}" não aceita valores fracionados.`
     }
@@ -694,9 +787,7 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
           quantidade: quantidadeNumerica,
           motivo: motivo.trim(),
           documentoReferencia: documentoReferencia.trim() || null,
-          solicitanteNome: solicitanteNome.trim() || null,
-          solicitanteSetor: solicitanteSetor.trim() || null,
-          solicitanteFuncao: solicitanteFuncao.trim() || null,
+          pessoaAtendidaId: pessoaSelecionada?.id ?? null,
         }),
       })
       const dados = await res.json()
@@ -766,6 +857,7 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
                     onChange={(e) => {
                       setTermoBusca(e.target.value)
                       setDropdownAberto(true)
+                      if (e.target.value.trim().length < 2) setResultadosBusca([])
                     }}
                     onFocus={() => setDropdownAberto(true)}
                     disabled={bloqueado}
@@ -896,59 +988,78 @@ export default function NovaMovimentacaoModal({ onClose, onSalvo }: NovaMoviment
           </FieldGroup>
         </Secao>
 
-        {/* ---------------- Pessoa relacionada (opcional) ---------------- */}
+        {/* ---------------- Pessoa atendida (cadastro leve) ---------------- */}
         <Secao>
-          <SecaoTitulo>Pessoa relacionada</SecaoTitulo>
+          <SecaoTitulo>Pessoa atendida</SecaoTitulo>
           <TipoDescricao style={{ marginTop: -4 }}>
-            {tipo === "ENTRADA"
-              ? "Preencha se for uma devolução avulsa de alguém — deixe em branco se for reposição de compra."
-              : tipo === "SAIDA"
-              ? "Quem está consumindo o material diretamente, se souber."
+            {tipo === "SAIDA"
+              ? "Obrigatório: selecione no cadastro quem está recebendo o material."
+              : tipo === "ENTRADA"
+              ? "Opcional: preencha se for devolução avulsa de alguém cadastrado."
               : "Normalmente não se aplica a ajustes de inventário."}
           </TipoDescricao>
 
           <FieldGroup>
-            <Label htmlFor="solicitanteNome">
-              <User size={12} /> Nome
+            <Label>
+              <User size={12} /> Pessoa do cadastro
+              {tipo === "SAIDA" && <Obrigatorio>*</Obrigatorio>}
             </Label>
-            <Input
-              id="solicitanteNome"
-              placeholder="Nome completo"
-              value={solicitanteNome}
-              onChange={(e) => setSolicitanteNome(e.target.value)}
-              maxLength={150}
-              disabled={bloqueado}
-            />
-          </FieldGroup>
 
-          <Grid2>
-            <FieldGroup>
-              <Label htmlFor="solicitanteSetor">
-                <Building2 size={12} /> Setor
-              </Label>
-              <Input
-                id="solicitanteSetor"
-                placeholder="Ex: Manutenção"
-                value={solicitanteSetor}
-                onChange={(e) => setSolicitanteSetor(e.target.value)}
-                maxLength={100}
-                disabled={bloqueado}
-              />
-            </FieldGroup>
-            <FieldGroup>
-              <Label htmlFor="solicitanteFuncao">
-                <Briefcase size={12} /> Função
-              </Label>
-              <Input
-                id="solicitanteFuncao"
-                placeholder="Ex: Eletricista"
-                value={solicitanteFuncao}
-                onChange={(e) => setSolicitanteFuncao(e.target.value)}
-                maxLength={100}
-                disabled={bloqueado}
-              />
-            </FieldGroup>
-          </Grid2>
+            {pessoaSelecionada ? (
+              <PessoaSelecionadaBox>
+                <PessoaSelecionadaInfo>
+                  <strong>{pessoaSelecionada.nome}</strong>
+                  <span>
+                    {pessoaSelecionada.setor} · {pessoaSelecionada.funcao}
+                  </span>
+                </PessoaSelecionadaInfo>
+                <TrocarPessoaButton type="button" onClick={trocarPessoa} disabled={bloqueado}>
+                  Trocar
+                </TrocarPessoaButton>
+              </PessoaSelecionadaBox>
+            ) : (
+              <BuscaWrapper ref={buscaPessoaRef}>
+                <BuscaInputBox>
+                  <Search size={16} />
+                  <input
+                    placeholder="Buscar pessoa cadastrada por nome..."
+                    value={termoBuscaPessoa}
+                    onChange={(e) => {
+                      setTermoBuscaPessoa(e.target.value)
+                      setDropdownPessoaAberto(true)
+                      if (e.target.value.trim().length < 2) setResultadosPessoas([])
+                    }}
+                    onFocus={() => setDropdownPessoaAberto(true)}
+                    disabled={bloqueado}
+                  />
+                  {buscandoPessoa && (
+                    <Loader2 size={14} className="spin" style={{ animation: "spin 0.7s linear infinite" }} />
+                  )}
+                </BuscaInputBox>
+
+                {dropdownPessoaAberto && termoBuscaPessoa.trim() && (
+                  <BuscaDropdown>
+                    {resultadosPessoas.length === 0 && !buscandoPessoa ? (
+                      <BuscaVazio>
+                        <User size={20} />
+                        Nenhuma pessoa encontrada — cadastre em Categorias › Pessoas atendidas.
+                      </BuscaVazio>
+                    ) : (
+                      resultadosPessoas.map((p) => (
+                        <BuscaItem key={p.id} type="button" onClick={() => selecionarPessoa(p)}>
+                          <BuscaItemNome>{p.nome}</BuscaItemNome>
+                          <BuscaItemMeta>
+                            {p.setor} · {p.funcao}
+                          </BuscaItemMeta>
+                        </BuscaItem>
+                      ))
+                    )}
+                  </BuscaDropdown>
+                )}
+              </BuscaWrapper>
+            )}
+            {errosCampo.pessoa && <ErrorText>{errosCampo.pessoa}</ErrorText>}
+          </FieldGroup>
         </Secao>
 
         {tipo === "AJUSTE" && (

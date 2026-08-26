@@ -356,6 +356,8 @@ model PessoaAtendida {
   createdAt DateTime @default(now())
 
   solicitacoes Solicitacao[]
+  movimentacoes MovimentacaoEstoque[]
+  emprestimos   Emprestimo[]
 
   @@index([nome])
   @@index([setor])
@@ -383,6 +385,14 @@ model MovimentacaoEstoque {
   solicitanteNome   String?
   solicitanteSetor  String?
   solicitanteFuncao String?
+
+  // Pessoa do cadastro leve que pediu/recebeu o material. Obrigatória na
+  // API para SAÍDA (e preenchida nas saídas de empréstimo/requisição);
+  // os solicitante* acima continuam sendo o snapshot imutável copiado
+  // dela na criação (listas, relatórios e PDFs leem esses campos).
+  // Nullable no banco apenas para preservar registros anteriores à regra.
+  pessoaAtendidaId String?
+  pessoaAtendida   PessoaAtendida? @relation(fields: [pessoaAtendidaId], references: [id], onDelete: SetNull)
 
   // Marcado na entrega: esse material precisa voltar pro almoxarifado?
   // null = sem marcação (legado) — nesse caso considera-se retorno apenas
@@ -413,6 +423,7 @@ model MovimentacaoEstoque {
   @@index([tipo])
   @@index([createdAt])
   @@index([emprestimoId])
+  @@index([pessoaAtendidaId])
 }
 
 // =====================================================================
@@ -578,6 +589,12 @@ model Emprestimo {
   solicitanteSetor  String?
   solicitanteFuncao String?
 
+  // Cadastro leve de quem recebeu — fonte dos solicitante* acima. A API
+  // exige pessoaAtendidaId em novos empréstimos e absorve os dados do
+  // cadastro; nullable no banco preserva registros anteriores à regra.
+  pessoaAtendidaId String?
+  pessoaAtendida   PessoaAtendida? @relation(fields: [pessoaAtendidaId], references: [id], onDelete: SetNull)
+
   loteId String?
 
   dataRetirada          DateTime  @default(now())
@@ -612,6 +629,7 @@ model Emprestimo {
   @@index([materialId])
   @@index([dataPrevistaDevolucao])
   @@index([loteId])
+  @@index([pessoaAtendidaId])
 }
 
 // =====================================================================

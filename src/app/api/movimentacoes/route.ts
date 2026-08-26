@@ -69,10 +69,11 @@ const movimentacaoSchema = z.object({
   quantidade: z.coerce.number(),
   motivo: z.string().trim().min(1, "Motivo é obrigatório").max(300),
   documentoReferencia: z.string().trim().max(100).optional().nullable(),
-  // NOVO: campos para registrar quem solicitou a movimentação
-  solicitanteNome: z.string().trim().max(150).optional().nullable(),
-  solicitanteSetor: z.string().trim().max(100).optional().nullable(),
-  solicitanteFuncao: z.string().trim().max(100).optional().nullable(),
+  // Quem pediu/recebeu vem SEMPRE do cadastro leve (PessoaAtendida), via
+  // autocomplete — não existe mais texto livre. Obrigatório na SAÍDA.
+  // Nome/setor/função são absorvidos do cadastro no servidor (snapshot);
+  // o payload nunca envia esses três campos.
+  pessoaAtendidaId: z.string().trim().min(1).optional().nullable(),
 })
 
 export async function POST(request: NextRequest) {
@@ -91,6 +92,30 @@ export async function POST(request: NextRequest) {
   }
 
   const dados = parsed.data
+
+  // Pessoa do cadastro leve: SAÍDA exige; nos demais tipos é opcional
+  // (ex.: devolução avulsa de alguém cadastrado). O snapshot
+  // nome/setor/função sai SEMPRE do cadastro — nunca do payload.
+  let pessoaAtendida: { id: string; nome: string; setor: string; funcao: string } | null = null
+  if (dados.pessoaAtendidaId) {
+    const encontrada = await prisma.pessoaAtendida.findUnique({
+      where: { id: dados.pessoaAtendidaId },
+      select: { id: true, nome: true, setor: true, funcao: true },
+    })
+    if (!encontrada) {
+      return NextResponse.json(
+        { error: "Pessoa atendida não encontrada. Selecione um cadastro existente." },
+        { status: 400 }
+      )
+    }
+    pessoaAtendida = encontrada
+  }
+  if (dados.tipo === "SAIDA" && !pessoaAtendida) {
+    return NextResponse.json(
+      { error: "Saídas exigem selecionar quem está recebendo o material (pessoa do cadastro de pessoas atendidas)." },
+      { status: 400 }
+    )
+  }
 
   if (dados.tipo !== "AJUSTE" && dados.quantidade <= 0) {
     return NextResponse.json({ error: "Quantidade deve ser maior que zero" }, { status: 400 })
@@ -142,9 +167,14 @@ export async function POST(request: NextRequest) {
         quantidadeAtual: estoqueNovo,
         motivo: dados.motivo,
         documentoReferencia: dados.documentoReferencia || null,
-        solicitanteNome: dados.solicitanteNome || null,
-        solicitanteSetor: dados.solicitanteSetor || null,
-        solicitanteFuncao: dados.solicitanteFuncao || null,
+        ...(pessoaAtendida
+          ? {
+              pessoaAtendidaId: pessoaAtendida.id,
+              solicitanteNome: pessoaAtendida.nome,
+              solicitanteSetor: pessoaAtendida.setor,
+              solicitanteFuncao: pessoaAtendida.funcao,
+            }
+          : {}),
         usuarioId,
       },
     }),

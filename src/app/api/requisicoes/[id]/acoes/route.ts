@@ -168,6 +168,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             data: {
               materialId: item.materialId,
               quantidade,
+              // Origem pública → o pedido nasceu do cadastro leve; vincula
+              // para o rastro ficar consultável por pessoa.
+              ...(solicitacao.pessoaAtendidaId
+                ? { pessoaAtendidaId: solicitacao.pessoaAtendidaId }
+                : {}),
               solicitanteNome: nomeSolicitante,
               solicitanteSetor: setorSolicitante,
               solicitanteFuncao: funcaoSolicitante,
@@ -191,6 +196,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             motivo: emprestimoId
               ? `Empréstimo — requisição #${solicitacao.numero}`
               : `Requisição #${solicitacao.numero}`,
+            ...(solicitacao.pessoaAtendidaId
+              ? { pessoaAtendidaId: solicitacao.pessoaAtendidaId }
+              : {}),
             solicitanteNome: nomeSolicitante,
             solicitanteSetor: setorSolicitante,
             solicitanteFuncao: funcaoSolicitante,
