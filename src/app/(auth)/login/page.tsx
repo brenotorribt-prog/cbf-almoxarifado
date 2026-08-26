@@ -3,12 +3,12 @@
 import { Suspense, useState, useId } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import Image from "next/image"
 import dynamic from "next/dynamic"
-import styled, { css, keyframes } from "styled-components"
+import styled, { css, keyframes, useTheme } from "styled-components"
 import { motion, AnimatePresence } from "framer-motion"
 import { Mail, Lock, Eye, EyeOff, AlertCircle, LogIn, ArrowRight, Shield } from "lucide-react"
 import { hexToRgba } from "@/styles/theme"
+import { rgbaFromHex } from "@/styles/visual-identity"
 
 // Componente de fallback para carregamento
 const LoadingFallback = () => (
@@ -56,6 +56,8 @@ function LoginComponent() {
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   const id = useId()
+  // Tema resolvido (default + identidade visual configurada pelo ADMIN)
+  const theme = useTheme()
 
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -138,8 +140,8 @@ function LoginComponent() {
               animationDelay: p.delay + 's',
               animationDuration: p.duration + 's',
               opacity: 0.6 + p.glow * 0.3,
-              boxShadow: `0 0 ${p.size * 2}px ${p.size}px rgba(255, 215, 0, ${p.glow * 0.2}),
-                          0 0 ${p.size * 4}px ${p.size * 2}px rgba(255, 200, 0, ${p.glow * 0.1})`,
+              boxShadow: `0 0 ${p.size * 2}px ${p.size}px ${rgbaFromHex(theme.colors.accent.yellow, p.glow * 0.25)},
+                          0 0 ${p.size * 4}px ${p.size * 2}px ${rgbaFromHex(theme.colors.accent.yellowDark, p.glow * 0.15)}`,
             }}
           />
         ))}
@@ -148,12 +150,12 @@ function LoginComponent() {
       <Wrapper>
         <GlassCard $shake={shaking}>
           <LogoWrapper>
-            <Image
-              src="/cbflogo.png"
-              alt="CBF Logo"
+            {/* eslint-disable-next-line @next/next/no-img-element -- URL dinâmica (R2/branding) */}
+            <img
+              src={theme.colors.brand.logoUrl}
+              alt={theme.colors.brand.nomeOrganizacao}
               width={120}
               height={120}
-              priority
               className="logo"
               style={{
                 width: '100%',
@@ -165,7 +167,7 @@ function LoginComponent() {
           </LogoWrapper>
 
           <CardHeader>
-            <BrandTitle>CBF Almoxarifado</BrandTitle>
+            <BrandTitle>{theme.colors.brand.nomeOrganizacao}</BrandTitle>
             <CardTitle>
               Acesso ao <span>sistema</span>
             </CardTitle>
@@ -345,7 +347,9 @@ const PageRoot = styled.div`
 const BackgroundImage = styled.div`
   position: fixed;
   inset: 0;
-  background-image: url('/BGA.png');
+  /* Imagem de identidade configurável (R2 ou fallback /public/branding) */
+  background-image: ${({ theme }) => `url("${theme.colors.brand.loginBackgroundUrl}")`};
+  background-color: ${({ theme }) => theme.colors.surface.background};
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

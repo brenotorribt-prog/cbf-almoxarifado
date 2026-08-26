@@ -306,8 +306,8 @@ export async function gerarPdfPedidos(
   }
 ) {
   const { renderToBuffer } = await import("@react-pdf/renderer")
-  const { logoUrl, footerLogoUrl } = carregarLogosPdf()
-  
+  const { logoUrl, footerLogoUrl } = await carregarLogosPdf()
+
   const pdf = (
     <PDFCompras
       pedidos={pedidos}

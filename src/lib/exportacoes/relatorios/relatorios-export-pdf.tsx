@@ -294,7 +294,7 @@ export async function gerarPdfRelatorio(
   pessoas: EstoquePessoaRow[] = []
 ): Promise<Buffer> {
   const { renderToBuffer } = await import("@react-pdf/renderer")
-  const { logoUrl, footerLogoUrl } = carregarLogosPdf()
+  const { logoUrl, footerLogoUrl } = await carregarLogosPdf()
 
   const pdf = (
     <PDFRelatorio

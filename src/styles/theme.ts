@@ -87,6 +87,17 @@ export const theme = {
       link: '#009c3b',
       linkHover: '#8ed4b8',
     },
+    // ===================================================================
+    // IDENTIDADE VISUAL — consumida pelos componentes SACADA do theme.
+    // Valores default apontam para assets neutros em /public/branding.
+    // Um ADMIN pode sobrescrever via VisualIdentity (ver resolveVisualTheme).
+    // ===================================================================
+    brand: {
+      nomeOrganizacao: 'Almoxarifado',
+      logoUrl: '/branding/logo-default.png',
+      loginBackgroundUrl: '/branding/login-background-default.png',
+      sidebarBackgroundUrl: '/branding/sidebar-background-default.png',
+    },
   },
   typography: {
     fontFamily: {

@@ -3,40 +3,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { prisma } from '@/lib/prisma'
 import { requireAuth } from '@/lib/auth/require-role'
-import fs from 'fs'
-import path from 'path'
+import { carregarLogosPdf } from '@/lib/pdf/pdf-logos-server'
 
 // Importações dos componentes PDF
 import { MovimentacaoPDF } from '@/components/pdf/MovimentacaoPDF'
 import { EmprestimoPDF } from '@/components/pdf/EmprestimoPDF'
 
-// ✅ Função para converter imagem para Base64
-function getImageBase64(filePath: string): string | null {
-  try {
-    const fullPath = path.join(process.cwd(), 'public', filePath)
-
-    if (!fs.existsSync(fullPath)) {
-      return null
-    }
-
-    const buffer = fs.readFileSync(fullPath)
-    const base64 = buffer.toString('base64')
-    const ext = path.extname(filePath).substring(1) // png, jpg, etc
-    return `data:image/${ext};base64,${base64}`
-  } catch (error) {
-    console.error('Erro ao ler imagem:', error)
-    return null
-  }
-}
-
-// Logos carregadas UMA vez por processo — evita repetir fs.readFileSync +
-// conversão base64 síncrona em cada request de geração de PDF.
-const LOGO_BASE64 = getImageBase64('CBFLO.png')
-const FOOTER_LOGO_BASE64 = getImageBase64('CBFTEXT.png')
-
 export async function GET(req: NextRequest) {
   const guard = await requireAuth()
   if (guard instanceof NextResponse) return guard
+
+  // Logo resolvida POR REQUEST: reflete troca de identidade sem restart
+  // (antes era cacheada em constante de módulo com assets fixos).
+  const logos = await carregarLogosPdf()
 
   const searchParams = req.nextUrl.searchParams
   const tipo = searchParams.get('tipo')
@@ -98,8 +77,8 @@ export async function GET(req: NextRequest) {
             name: movimentacao.usuario.name,
           },
         },
-        logoUrl: LOGO_BASE64 || undefined,
-        footerLogoUrl: FOOTER_LOGO_BASE64 || undefined,
+        logoUrl: logos.logoUrl,
+        footerLogoUrl: logos.footerLogoUrl,
       })
 
       const pdfBuffer = await renderToBuffer(pdfComponent)
@@ -163,8 +142,8 @@ export async function GET(req: NextRequest) {
             name: emprestimo.aprovador.name,
           } : null,
         },
-        logoUrl: LOGO_BASE64 || undefined,
-        footerLogoUrl: FOOTER_LOGO_BASE64 || undefined,
+        logoUrl: logos.logoUrl,
+        footerLogoUrl: logos.footerLogoUrl,
       })
 
       const pdfBuffer = await renderToBuffer(pdfComponent)

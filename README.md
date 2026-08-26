@@ -98,6 +98,11 @@ Nenhuma informação confidencial da operação (credenciais, dados de pessoas, 
 ### ⚙️ Cadastros auxiliares
 - Categorias/áreas, unidades de medida (inteira/fracionada) e **pessoas atendidas** — cadastro leve mantido pela equipe que serve como fonte única de nomes para o formulário público, eliminando duplicidade ("João" vs "joão") nos relatórios.
 
+### 🎨 Identidade visual configurável
+- Painel exclusivo do **ADMIN** (*Configurações → Identidade visual*) para definir nome da organização, paleta de cores e imagens sem tocar em código;
+- Uploads diretos para o **Cloudflare R2** com URL pré-assinada para logo, background de login/registro e background da sidebar — com preview realista (16:9 no login, vertical na sidebar), avisos de proporção e validação de MIME/tamanho no cliente **e** no servidor;
+- Cores semânticas (sucesso/erro/aviso), paleta de especialidades e avatares permanecem protegidas: a configuração altera a marca, nunca o significado dos status.
+
 ---
 
 ## Destaques de engenharia
@@ -294,6 +299,28 @@ O papel `SOLICITANTE` não executa nenhuma ação de gestão — ele apenas cria
 
 ---
 
+## Identidade visual configurável
+
+A aplicação possui uma camada explícita de **design tokens + branding por organização**: componentes consomem apenas `theme.colors.*`, `theme.spacing` etc., sem saber de onde o tema veio. Não existe nenhum `if (cliente === ...)` no código — a identidade vem de configuração persistida.
+
+```text
+theme default (estrutural + brand neutro)
+        +
+configuração persistida (cores/nome/imagens do ADMIN)
+        =
+Theme resolvido → <ThemeProvider> → toda a aplicação
+```
+
+- **Tokens estruturais** (tipografia, spacing, raios, sombras, transições, breakpoints, status semânticos, especialidades, paleta de gráficos base) ficam fixos em `src/styles/theme.ts`;
+- **Tokens de marca** (primária, accent, destaque, superfícies, sidebar, textos, links, nome e imagens) podem ser sobrescritos via painel admin;
+- A resolução acontece **no servidor, uma vez por request** (`obterIdentidadeVisual()` no root layout, com `React.cache`), antes da primeira pintura — sem flash de tema e sem mismatch de hidratação. Falha de banco ⇒ tema default;
+- Persistência em tabela singleton `ConfiguracaoVisual` (migração aditiva, `CREATE TABLE IF NOT EXISTS`, nada destrutivo): coluna nula = usar default;
+- Imagens seguem o mesmo fluxo presignado do R2 já usado nas fotos de materiais: nova imagem sobe e só então a referência troca; cleanup do antigo é best-effort e posterior.
+
+**Fallbacks locais** (`public/branding/`, neutros e versionados): `logo-default.png`, `login-background-default.png` (16:9) e `sidebar-background-default.png` (vertical). São usados quando não há configuração ou a URL falha. Recomendações exibidas no próprio painel: login **16:9** (ex.: 1920×1080, cortes via `object-fit: cover`) e sidebar **vertical ~2:3** (ex.: 800×1200).
+
+PDFs (recibos, movimentações, empréstimos, relatórios e compras) resolvem o logo pela mesma cadeia (configuração → fallback) e a segurança é garantida no servidor: `PATCH` exige **ADMIN** (`requireAdmin`), com validação Zod que aceita apenas `#RRGGBB` e URLs http(s) de imagem — nada de CSS/HTML/SVG arbitrário.
+
 ## Como executar localmente
 
 ### Pré-requisitos
@@ -379,7 +406,7 @@ Acesse **http://localhost:3000**. Faça login com o ADMIN do seed; novos cadastr
 
 ### Qualidade e CI
 
-O repositório tem **GitHub Actions CI** (`.github/workflows/ci.yml`) que roda, a cada `push`/PR, as quatro portas de qualidade: **lint**, **typecheck**, **testes unitários** e **build de produção**. Os testes cobrem a máquina de estados das requisições (`requisicoes-helpers`), o cálculo de estoque (`calcularEstoqueNovo`), a geração de código interno e a máscara de telefone — regras puras extraídas das rotas para serem testáveis sem banco.
+O repositório tem **GitHub Actions CI** (`.github/workflows/ci.yml`) que roda, a cada `push`/PR, as quatro portas de qualidade: **lint**, **typecheck**, **testes unitários** e **build de produção**. Os testes cobrem a máquina de estados das requisições (`requisicoes-helpers`), o cálculo de estoque (`calcularEstoqueNovo`), a geração de código interno, a máscara de telefone e a camada de identidade visual (validação de cores/Zod, proporções de imagem, resolução do tema final, fallbacks e autorização das rotas) — regras puras extraídas das rotas para serem testáveis sem banco.
 
 ### Variáveis adicionais (opcionais)
 

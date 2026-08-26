@@ -2,16 +2,16 @@
 
 import { Suspense, useState } from "react"
 import { useRouter } from "next/navigation"
-import Image from "next/image"
 import dynamic from "next/dynamic"
-import styled, { css, keyframes } from "styled-components"
+import styled, { css, keyframes, useTheme } from "styled-components"
 import { motion, AnimatePresence } from "framer-motion"
-import { 
-  Mail, Lock, User, AlertCircle, ArrowRight, Shield, 
+import {
+  Mail, Lock, User, AlertCircle, ArrowRight, Shield,
   CheckCircle, Eye, EyeOff, LogIn, Building, Phone,
   Users, Package, ClipboardList, UserCheck
 } from "lucide-react"
 import { hexToRgba } from "@/styles/theme"
+import { rgbaFromHex } from "@/styles/visual-identity"
 
 // Componente de fallback para carregamento
 const LoadingFallback = () => (
@@ -119,6 +119,8 @@ function formatarTelefone(valorBruto: string): string {
 
 function CadastroComponent() {
   const router = useRouter()
+  // Tema resolvido (default + identidade visual configurada pelo ADMIN)
+  const theme = useTheme()
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -250,8 +252,8 @@ function CadastroComponent() {
               animationDelay: p.delay + 's',
               animationDuration: p.duration + 's',
               opacity: 0.6,
-              boxShadow: `0 0 ${p.size * 3}px ${p.size}px rgba(255, 215, 0, 0.3),
-                          0 0 ${p.size * 6}px ${p.size * 2}px rgba(255, 200, 0, 0.15)`,
+              boxShadow: `0 0 ${p.size * 3}px ${p.size}px ${rgbaFromHex(theme.colors.accent.yellow, 0.35)},
+                          0 0 ${p.size * 6}px ${p.size * 2}px ${rgbaFromHex(theme.colors.accent.yellowDark, 0.18)}`,
             }}
           />
         ))}
@@ -260,12 +262,12 @@ function CadastroComponent() {
       <Wrapper>
         <GlassCard>
           <LogoWrapper>
-            <Image
-              src="/cbflogo.png"
-              alt="CBF Logo"
+            {/* eslint-disable-next-line @next/next/no-img-element -- URL dinâmica (R2/branding) */}
+            <img
+              src={theme.colors.brand.logoUrl}
+              alt={theme.colors.brand.nomeOrganizacao}
               width={100}
               height={100}
-              priority
               className="logo"
               style={{
                 width: '100%',
@@ -277,7 +279,7 @@ function CadastroComponent() {
           </LogoWrapper>
 
           <CardHeader>
-            <BrandTitle>CBF Almoxarifado</BrandTitle>
+            <BrandTitle>{theme.colors.brand.nomeOrganizacao}</BrandTitle>
             <CardTitle>
               Criar <span>conta</span>
             </CardTitle>
@@ -567,7 +569,9 @@ const PageRoot = styled.div`
 const BackgroundImage = styled.div`
   position: fixed;
   inset: 0;
-  background-image: url('/BGA.png');
+  /* Imagem de identidade configurável (R2 ou fallback /public/branding) */
+  background-image: ${({ theme }) => `url("${theme.colors.brand.loginBackgroundUrl}")`};
+  background-color: ${({ theme }) => theme.colors.surface.background};
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;

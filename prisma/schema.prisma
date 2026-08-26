@@ -633,6 +633,38 @@ model Emprestimo {
 }
 
 // =====================================================================
+// IDENTIDADE VISUAL DA ORGANIZAÇÃO
+// =====================================================================
+
+// Singleton (id fixo 'principal'): identidade visual configurável pelo ADMIN
+// sem deploy. Sobrescreve apenas os tokens de marca do Theme default
+// (ver src/styles/visual-identity.ts). Campos nulos = usa fallback default.
+model ConfiguracaoVisual {
+  id              String  @id @default("principal")
+
+  nomeOrganizacao String?
+
+  corPrimaria        String?
+  corAccent          String?
+  corDestaque        String?
+  corBackground      String?
+  corSurface         String?
+  corSidebar         String?
+  corTextoPrimaria   String?
+  corTextoSecundaria String?
+  corLink            String?
+
+  logoUrl              String?
+  loginBackgroundUrl   String?
+  sidebarBackgroundUrl String?
+
+  atualizadoPorId String?
+  atualizadoEm    DateTime @updatedAt
+
+  @@map("configuracoes_visuais")
+}
+
+// =====================================================================
 // PEDIDOS DE COMPRA
 // =====================================================================
 

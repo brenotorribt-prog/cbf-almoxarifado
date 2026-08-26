@@ -30,6 +30,7 @@ import {
   Loader2,
   UserRound,
 } from "lucide-react"
+import { SecaoIdentidadeVisual } from "@/components/configuracoes/identidade-visual-section"
 
 // =====================================================================
 // TIPOS
@@ -621,6 +622,15 @@ export default function ConfiguracoesPage() {
   const [motivoRejeicao, setMotivoRejeicao] = useState("")
   const [toast, setToast] = useState<{ tone: "success" | "error"; texto: string } | null>(null)
   const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Papel do próprio usuário — a seção de identidade visual é ADMIN-only
+  const [papelUsuario, setPapelUsuario] = useState<Role | null>(null)
+
+  useEffect(() => {
+    fetch("/api/perfil")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setPapelUsuario(d?.usuario?.role ?? null))
+      .catch(() => {})
+  }, [])
 
   // debounce da busca
   useEffect(() => {
@@ -744,6 +754,8 @@ export default function ConfiguracoesPage() {
           <StatLabel>Rejeitados</StatLabel>
         </StatCard>
       </StatsGrid>
+
+      {papelUsuario === "ADMIN" && <SecaoIdentidadeVisual />}
 
       <Toolbar>
         <SearchBox>

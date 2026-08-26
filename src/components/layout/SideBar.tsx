@@ -308,10 +308,15 @@ export default function Sidebar({
         <TopRow>
           <Brand>
             <LogoCircle>
-              <img src="/cbflogo.png" alt="CBF" />
+              {/* Logo da organização — vem do tema resolvido (config do
+                  ADMIN no R2 ou fallback neutro em /public/branding). */}
+              <img
+                src={theme.colors.brand.logoUrl}
+                alt={theme.colors.brand.nomeOrganizacao}
+              />
             </LogoCircle>
             <BrandText $collapsed={collapsed}>
-              <BrandName>CBF</BrandName>
+              <BrandName>{theme.colors.brand.nomeOrganizacao}</BrandName>
               <BrandSub>Almoxarifado</BrandSub>
             </BrandText>
           </Brand>
@@ -580,6 +585,11 @@ const Aside = styled.aside<{ $collapsed: boolean; $mobileOpen: boolean }>`
 
   z-index: ${({ theme }) => theme.zIndex.overlay};
 
+  // Base = cor da sidebar configurável; por cima, scrim de legibilidade +
+  // imagem de identidade (R2 ou fallback). O scrim permanece fixo porque é
+  // recurso estrutural de contraste sobre QUALQUER imagem configurada.
+  background-color: ${({ theme }) => theme.colors.surface.sidebar};
+
   background-image:
   linear-gradient(
     180deg,
@@ -587,7 +597,7 @@ const Aside = styled.aside<{ $collapsed: boolean; $mobileOpen: boolean }>`
     rgba(10,22,40,.58) 50%,
     rgba(10,22,40,.68) 100%
   ),
-  url("/BGSB.png");
+  ${({ theme }) => `url("${theme.colors.brand.sidebarBackgroundUrl}")`};
 
   background-size: cover;
   background-position: center 30%;

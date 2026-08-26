@@ -1,7 +1,9 @@
-// lib/gerar-recibo-cliente.tsx
+﻿// lib/pdf/gerar-recibo-cliente.tsx
 "use client"
 
 import type { ReciboAssinaturaProps } from "@/components/pdf/RecibAssinaturaPDF"
+
+const LOGO_FALLBACK = "/branding/logo-default.png"
 
 async function urlParaBase64(url: string): Promise<string | undefined> {
   try {
@@ -19,18 +21,31 @@ async function urlParaBase64(url: string): Promise<string | undefined> {
   }
 }
 
+/** Logo da organização conforme a Identidade Visual (R2 ou fallback). */
+async function resolverLogoUrl(): Promise<string> {
+  try {
+    const res = await fetch("/api/configuracoes/identidade-visual")
+    if (!res.ok) return LOGO_FALLBACK
+    const { config } = (await res.json()) as { config?: { logoUrl?: string | null } }
+    return config?.logoUrl || LOGO_FALLBACK
+  } catch {
+    return LOGO_FALLBACK
+  }
+}
+
 export async function gerarEAbrirRecibo(
   props: Omit<ReciboAssinaturaProps, "logoUrl" | "footerLogoUrl">
 ) {
-  const [{ pdf }, { ReciboAssinaturaPDF }, logoUrl, footerLogoUrl] = await Promise.all([
+  const [{ pdf }, { ReciboAssinaturaPDF }, logoUrl] = await Promise.all([
     import("@react-pdf/renderer"),
     import("@/components/pdf/RecibAssinaturaPDF"),
-    urlParaBase64("/CBFLO.png"),
-    urlParaBase64("/CBFTEXT.png"),
+    resolverLogoUrl().then(urlParaBase64),
   ])
 
+  // footerLogoUrl foi aposentado junto com o banner proprietário — o
+  // componente trata a ausência com renderização condicional.
   const blob = await pdf(
-    <ReciboAssinaturaPDF {...props} logoUrl={logoUrl} footerLogoUrl={footerLogoUrl} />
+    <ReciboAssinaturaPDF {...props} logoUrl={logoUrl} footerLogoUrl={undefined} />
   ).toBlob()
 
   const blobUrl = URL.createObjectURL(blob)

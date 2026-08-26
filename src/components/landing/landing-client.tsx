@@ -373,8 +373,9 @@ const BackgroundContainer = styled.div`
     z-index: 1;
   }
   
-  /* Imagem de fundo */
-  background-image: url("/BGA.png");
+  /* Imagem de fundo — identidade configurável (R2 ou fallback neutro) */
+  background-image: ${({ theme }) => `url("${theme.colors.brand.loginBackgroundUrl}")`};
+  background-color: ${({ theme }) => theme.colors.surface.background};
   background-size: cover;
   background-position: center 30%;
   background-repeat: no-repeat;
