@@ -55,7 +55,7 @@ export async function PATCH(
   const dados = parsed.data
   
   // Prepara os dados para atualização
-  const updateData: any = {}
+  const updateData: Prisma.ItemPedidoCompraUpdateInput = {}
   
   if (dados.status !== undefined) {
     updateData.status = dados.status

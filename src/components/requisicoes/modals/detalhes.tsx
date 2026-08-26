@@ -538,7 +538,6 @@ export default function RequisicaoDetalheModal({
 // STYLED COMPONENTS
 // =====================================================================
 
-const spin = keyframes`to { transform: rotate(360deg); }`
 const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`
 const slideIn = keyframes`from { opacity: 0; transform: translateY(-12px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); }`
 

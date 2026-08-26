@@ -202,17 +202,6 @@ const SecaoTitulo = styled.h3`
     background: ${({ theme }) => theme.colors.surface.border};
   }
 `
-
-const Grid3 = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: ${({ theme }) => theme.spacing[3]};
-
-  @media (max-width: 560px) {
-    grid-template-columns: 1fr;
-  }
-`
-
 const FieldGroup = styled.div`
   display: flex;
   flex-direction: column;

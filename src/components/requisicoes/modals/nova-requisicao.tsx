@@ -9,7 +9,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import styled, { keyframes } from "styled-components"
-import { theme, hexToRgba } from "@/styles/theme"
+import { theme } from "@/styles/theme"
 import { X, Search, Plus, Trash2, Loader2, ShieldAlert, PackageMinus, HandCoins, ArrowRightLeft, UserRound, Users } from "lucide-react"
 
 type Tipo = "SAIDA" | "EMPRESTIMO" | "TRANSFERENCIA"
@@ -362,7 +362,6 @@ export default function NovaRequisicaoModal({
 // STYLED COMPONENTS
 // =====================================================================
 
-const spin = keyframes`to { transform: rotate(360deg); }`
 const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`
 const slideIn = keyframes`from { opacity: 0; transform: translateY(-12px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); }`
 

@@ -55,7 +55,6 @@ import {
   Loader2,
   Inbox,
   X,
-  Ruler,
   UserRound,
   CalendarClock,
   Pencil,
@@ -309,7 +308,7 @@ export default function MateriaisPage() {
 
   const abrirCadastro = useCallback(() => setMostrarCadastro(true), [])
 
-  function handleMaterialCadastrado(material: MaterialCriado) {
+  function handleMaterialCadastrado(_material: MaterialCriado) {
     setMostrarCadastro(false)
     refetch()
   }

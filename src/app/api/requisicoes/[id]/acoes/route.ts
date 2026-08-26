@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireRole } from "@/lib/auth/require-role"
+import { calcularEstoqueNovo } from "@/lib/estoque"
 import {
   ACOES_VALIDAS,
   AcaoItem,
@@ -143,12 +144,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const quantidade = Number(item.quantidade)
         const estoqueAnterior = Number(item.material.estoqueAtual)
 
-        if (estoqueAnterior < quantidade) {
+        const calculo = calcularEstoqueNovo("SAIDA", estoqueAnterior, quantidade)
+        if (!calculo.ok) {
           ignorados.push({ itemId: item.id, material: item.material.nome, motivo: "estoque insuficiente" })
           continue
         }
 
-        const estoqueNovo = estoqueAnterior - quantidade
+        const estoqueNovo = calculo.estoqueNovo!
 
         dataBase.dataEntrega = new Date()
         dataBase.entreguePor = { connect: { id: usuario.id } }

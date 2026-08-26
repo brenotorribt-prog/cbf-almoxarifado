@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useState, useEffect, useId } from "react"
+import { Suspense, useState, useId } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import Image from "next/image"
@@ -9,7 +9,6 @@ import styled, { css, keyframes } from "styled-components"
 import { motion, AnimatePresence } from "framer-motion"
 import { Mail, Lock, Eye, EyeOff, AlertCircle, LogIn, ArrowRight, Shield } from "lucide-react"
 import { hexToRgba } from "@/styles/theme"
-import { useTheme } from "@/hooks/useTheme"
 
 // Componente de fallback para carregamento
 const LoadingFallback = () => (
@@ -54,7 +53,6 @@ export default function LoginPage() {
 // Componente principal (será renderizado apenas no cliente)
 function LoginComponent() {
   const router = useRouter()
-  const theme = useTheme()
   const searchParams = useSearchParams()
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   const id = useId()

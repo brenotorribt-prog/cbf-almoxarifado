@@ -12,7 +12,7 @@
  * os modais entram na próxima etapa.
  */
 
-import { useState, useRef, useMemo, useEffect } from "react"
+import { useState, useRef, useEffect } from "react"
 import styled, { keyframes } from "styled-components"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query"
@@ -22,7 +22,6 @@ import {
   ArrowLeftRight,
   Plus,
   HandCoins,
-  Search,
   Loader2,
   Inbox,
   AlertTriangle,
@@ -33,7 +32,6 @@ import {
   Trash2,
   Undo2,
   ShieldCheck,
-  ShieldX,
   Clock,
   CheckCircle2,
   XCircle,

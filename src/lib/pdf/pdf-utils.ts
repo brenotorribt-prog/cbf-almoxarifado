@@ -1,5 +1,5 @@
 // lib/pdf-utils.ts
-import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
+import { StyleSheet } from '@react-pdf/renderer'
 
 // REMOVIDO: registro de fonte Inter (usando Helvetica padrão)
 

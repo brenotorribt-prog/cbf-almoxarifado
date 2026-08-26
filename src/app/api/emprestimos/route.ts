@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireAuth, requireRole } from "@/lib/auth/require-role"
+import { calcularEstoqueNovo } from "@/lib/estoque"
 import { Prisma, StatusEmprestimo, Role } from "@prisma/client"
 import { randomUUID } from "crypto"
 
@@ -215,11 +216,12 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        const estoqueAnterior = Number(material.estoqueAtual)
-        const estoqueNovo = estoqueAnterior - item.quantidade
-        if (estoqueNovo < 0) {
+        const calculo = calcularEstoqueNovo("SAIDA", Number(material.estoqueAtual), item.quantidade)
+        if (!calculo.ok) {
           throw new Error(`ESTOQUE_INSUFICIENTE:${material.nome}`)
         }
+        const estoqueAnterior = Number(material.estoqueAtual)
+        const estoqueNovo = calculo.estoqueNovo!
 
         const emprestimo = await tx.emprestimo.create({
           data: {

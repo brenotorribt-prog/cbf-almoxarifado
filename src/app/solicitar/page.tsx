@@ -13,8 +13,8 @@
  */
 
 import { useState, useEffect, useRef } from "react"
-import styled, { keyframes } from "styled-components"
-import { theme, hexToRgba } from "@/styles/theme"
+import styled from "styled-components"
+import { theme } from "@/styles/theme"
 import { Search, Plus, Trash2, Loader2, CheckCircle2, PackageMinus, HandCoins, ShieldAlert } from "lucide-react"
 
 type Tipo = "SAIDA" | "EMPRESTIMO"
@@ -320,8 +320,6 @@ export default function SolicitarPage() {
 // =====================================================================
 // STYLED COMPONENTS
 // =====================================================================
-
-const spin = keyframes`to { transform: rotate(360deg); }`
 
 const Wrapper = styled.div`
   min-height: 100vh;

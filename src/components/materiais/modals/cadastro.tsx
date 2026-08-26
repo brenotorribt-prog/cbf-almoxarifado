@@ -26,8 +26,6 @@ import {
   ImageOff,
   Trash2,
   AlertTriangle,
-  Package,
-  Ruler,
   MapPin,
   Barcode,
   Scan,

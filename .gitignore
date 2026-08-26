@@ -42,3 +42,11 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# AI/editor tooling (não fazem parte do app)
+.agents/
+.claude/
+.windsurf/
+skills-lock.json
+contexto.md
+scripts/

@@ -25,7 +25,6 @@ import {
   Hash,
   Clock,
   UserRound,
-  Users,
   ChevronDown,
   ArrowRightLeft,
   HandCoins,
@@ -285,14 +284,14 @@ export default function RequisicoesPage() {
           ))}
         </FiltroSelect>
 
-        <FiltroSelect value={tipo} onChange={(e) => setTipo(e.target.value as any)}>
+        <FiltroSelect value={tipo} onChange={(e) => setTipo(e.target.value as "TODOS" | TipoSolicitacao)}>
           <option value="TODOS">Tipo: todos</option>
           <option value="SAIDA">Saída</option>
           <option value="EMPRESTIMO">Empréstimo</option>
           <option value="TRANSFERENCIA">Transferência</option>
         </FiltroSelect>
 
-        <FiltroSelect value={prioridade} onChange={(e) => setPrioridade(e.target.value as any)}>
+        <FiltroSelect value={prioridade} onChange={(e) => setPrioridade(e.target.value as "TODOS" | Prioridade)}>
           <option value="TODOS">Prioridade: todas</option>
           <option value="URGENTE">Urgente</option>
           <option value="ALTA">Alta</option>
@@ -402,7 +401,6 @@ export default function RequisicoesPage() {
 // STYLED COMPONENTS
 // =====================================================================
 
-const spin = keyframes`to { transform: rotate(360deg); }`
 const pulse = keyframes`0%, 100% { opacity: 1; } 50% { opacity: 0.35; }`
 
 const glassCardStyles = `

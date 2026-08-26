@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import styled, { keyframes, css, createGlobalStyle } from "styled-components"
-import { theme, hexToRgba } from "@/styles/theme"
 import { LogIn, UserPlus, Package, Shield, BarChart3, Boxes, ArrowRight, ChevronDown, Lock, Zap, Users } from "lucide-react"
 
 export default function LandingClient() {
@@ -19,7 +18,7 @@ export default function LandingClient() {
     if (!ctx) return
 
     let animationId: number
-    let particles: Array<{
+    const particles: Array<{
       x: number
       y: number
       vx: number

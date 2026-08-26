@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/prisma"
 import { requireAuth, requireRole } from "@/lib/auth/require-role"
+import { calcularEstoqueNovo, validaUnidadeInteira } from "@/lib/estoque"
 import { Prisma, TipoMovimentacao } from "@prisma/client"
 
 const LIMIT_PADRAO = 30
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Material não encontrado" }, { status: 404 })
   }
 
-  if (material.unidadeMedida.tipo === "INTEIRA" && dados.quantidade % 1 !== 0) {
+  if (!validaUnidadeInteira(material.unidadeMedida.tipo, dados.quantidade)) {
     return NextResponse.json(
       { error: `A unidade "${material.unidadeMedida.nome}" não aceita valores fracionados.` },
       { status: 400 }
@@ -137,25 +138,19 @@ export async function POST(request: NextRequest) {
   }
 
   const estoqueAnterior = Number(material.estoqueAtual)
-  let estoqueNovo: number
+  const calculo = calcularEstoqueNovo(dados.tipo, estoqueAnterior, dados.quantidade)
 
-  if (dados.tipo === "ENTRADA") {
-    estoqueNovo = estoqueAnterior + dados.quantidade
-  } else if (dados.tipo === "SAIDA") {
-    estoqueNovo = estoqueAnterior - dados.quantidade
-    if (estoqueNovo < 0) {
+  if (!calculo.ok) {
+    if (calculo.erro === "ESTOQUE_INSUFICIENTE") {
       return NextResponse.json({ error: "Estoque insuficiente para essa saída" }, { status: 409 })
     }
-  } else {
-    estoqueNovo = dados.quantidade
-    if (estoqueNovo < 0) {
-      return NextResponse.json({ error: "Estoque ajustado não pode ser negativo" }, { status: 400 })
-    }
+    return NextResponse.json({ error: "Estoque ajustado não pode ser negativo" }, { status: 400 })
   }
 
-  // Pra AJUSTE, grava a diferença real (pode ser negativa) — mantém o
-  // histórico legível em vez de mostrar o valor absoluto no campo `quantidade`.
-  const deltaRegistrado = dados.tipo === "AJUSTE" ? estoqueNovo - estoqueAnterior : dados.quantidade
+  const estoqueNovo = calculo.estoqueNovo!
+  // Pra AJUSTE, o helper grava a diferença real (pode ser negativa) — mantém
+  // o histórico legível em vez de mostrar o valor absoluto no campo `quantidade`.
+  const deltaRegistrado = calculo.delta!
 
   const [movimentacao] = await prisma.$transaction([
     prisma.movimentacaoEstoque.create({

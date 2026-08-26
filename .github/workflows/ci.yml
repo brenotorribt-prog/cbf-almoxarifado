@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    name: Lint · Typecheck · Testes · Build
+    runs-on: ubuntu-latest
+
+    env:
+      # Placeholders — nenhuma rota acessa banco/storage durante lint,
+      # typecheck ou testes; o build de produção usa pre-render dinâmico.
+      NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
+      NEXT_PUBLIC_APP_URL: "http://localhost:3000"
+      DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+      DIRECT_URL: "postgresql://postgres:postgres@localhost:5432/postgres"
+      R2_ACCOUNT_ID: "placeholder"
+      R2_ACCESS_KEY_ID: "placeholder"
+      R2_SECRET_ACCESS_KEY: "placeholder"
+      R2_BUCKET_NAME: "placeholder"
+      R2_PUBLIC_URL: "https://placeholder.r2.dev"
+      UPSTASH_REDIS_REST_URL: "https://placeholder.upstash.io"
+      UPSTASH_REDIS_REST_TOKEN: "placeholder"
+      SUPABASE_SERVICE_ROLE_KEY: "placeholder"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Gerar Prisma Client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Testes unitários
+        run: npm run test
+
+      - name: Build de produção
+        run: npm run build

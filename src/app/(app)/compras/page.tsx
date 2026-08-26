@@ -23,7 +23,7 @@
  * real — resolvendo os dois problemas de uma vez.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useRef } from "react"
 import styled, { keyframes } from "styled-components"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useInfiniteQuery } from "@tanstack/react-query"
@@ -36,11 +36,6 @@ import {
   Inbox,
   AlertTriangle,
   RefreshCw,
-  ChevronDown,
-  ChevronUp,
-  UserRound,
-  Building2,
-  Briefcase,
   CalendarClock,
   X,
   Check,

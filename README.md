@@ -237,21 +237,51 @@ O coração do domínio é a dupla **`Solicitacao`** (cabeçalho do pedido) + **
 
 ### Máquina de estados do item de requisição
 
+Cada item segue um ciclo de vida próprio. Os estados e as transições abaixo refletem exatamente a tabela `TRANSICOES` (em `src/lib/requisicoes/requisicoes-helpers.ts`):
+
 ```mermaid
 stateDiagram-v2
+    direction LR
+
     [*] --> PENDENTE
-    [*] --> AGUARDANDO_APROVACAO_SUPERIOR: material exige nível superior
-    AGUARDANDO_APROVACAO_SUPERIOR --> APROVADO: GESTOR / SUPERVISOR / ADMIN
-    AGUARDANDO_APROVACAO_SUPERIOR --> REJEITADO: GESTOR / SUPERVISOR / ADMIN
-    PENDENTE --> APROVADO: equipe do almoxarifado
-    PENDENTE --> REJEITADO: equipe do almoxarifado
-    APROVADO --> EM_PREPARACAO
-    EM_PREPARACAO --> PRONTO
-    PRONTO --> ENTREGUE: gera movimentação / empréstimo
-    APROVADO --> ENTREGUE: entrega direta
+    [*] --> AGUARDANDO_APROVACAO_SUPERIOR
+
+    PENDENTE --> APROVADO: aprovar
+    PENDENTE --> REJEITADO: rejeitar
+    PENDENTE --> CANCELADO: cancelar
+
+    AGUARDANDO_APROVACAO_SUPERIOR --> APROVADO: aprovar
+    AGUARDANDO_APROVACAO_SUPERIOR --> REJEITADO: rejeitar
+    AGUARDANDO_APROVACAO_SUPERIOR --> CANCELADO: cancelar
+
+    APROVADO --> EM_PREPARACAO: iniciar preparo
+    APROVADO --> PRONTO: marcar pronto
+    APROVADO --> ENTREGUE: entregar
+    APROVADO --> CANCELADO: cancelar
+
+    EM_PREPARACAO --> PRONTO: marcar pronto
+    EM_PREPARACAO --> CANCELADO: cancelar
+
+    PRONTO --> ENTREGUE: entregar
+    PRONTO --> CANCELADO: cancelar
+
+    ENTREGUE --> [*]
+    REJEITADO --> [*]
+    CANCELADO --> [*]
 ```
 
-Cada transição é validada no servidor por uma tabela declarativa (`TRANSICOES`) que define status de origem, status destino e papéis autorizados por combinação ação × status.
+> Legend: o marcador `[*]` indica o **início** da máquina (após a criação: `PENDENTE` para materiais comuns; `AGUARDANDO_APROVACAO_SUPERIOR` para materiais marcados com `requerAprovacao = true`) e o **fim** (estados terminais `ENTREGUE`, `REJEITADO` e `CANCELADO`).
+
+#### Autorização por ação (aplicada no servidor)
+
+As permissões não estão nos rótulos do diagrama porque no código são definidas por **combinação de ação × status do item**, via `papeisPermitidosParaAcao(acao, status)`:
+
+| Ação · status de origem | Papéis autorizados |
+|---|---|
+| `APROVAR` ou `REJEITAR` quando o item está em `AGUARDANDO_APROVACAO_SUPERIOR` | `ADMIN`, `GESTOR`, `SUPERVISOR` |
+| Qualquer outra ação (aprovar/rejeitar item pendente, iniciar preparo, marcar pronto, entregar, cancelar) | `ADMIN`, `GESTOR`, `SUPERVISOR`, `ALMOXARIFE` |
+
+O papel `SOLICITANTE` não executa nenhuma ação de gestão — ele apenas cria e acompanha as próprias requisições. A entrada `AGUARDANDO_APROVACAO_SUPERIOR` só existe para materiais sensíveis (`Material.requerAprovacao = true`), exigindo um nível hierárquico maior para aprovação/rejeição — exatamente como `papeisPermitidosParaAcao` implementa.
 
 ### Papéis e permissões
 
@@ -340,9 +370,16 @@ Acesse **http://localhost:3000**. Faça login com o ADMIN do seed; novos cadastr
 | `npm run dev` | Servidor de desenvolvimento (Next.js) |
 | `npm run build` | `prisma generate` + build de produção |
 | `npm run start` | Servidor de produção |
-| `npm run lint` | ESLint (config `eslint-config-next`) |
+| `npm run lint` | ESLint (config `eslint-config-next`), sem erros nem avisos |
+| `npm run typecheck` | Checagem de tipos estrita (`tsc --noEmit`) |
+| `npm run test` | Testes unitários das regras críticas (Vitest) |
+| `npm run test:watch` | Modo watch do Vitest |
 | `npm run seed` | Cria o usuário ADMIN inicial (`dotenv -e .env.local -- tsx prisma/seed.ts`) |
 | `npx prisma migrate deploy` | Aplica as migrações versionadas no banco |
+
+### Qualidade e CI
+
+O repositório tem **GitHub Actions CI** (`.github/workflows/ci.yml`) que roda, a cada `push`/PR, as quatro portas de qualidade: **lint**, **typecheck**, **testes unitários** e **build de produção**. Os testes cobrem a máquina de estados das requisições (`requisicoes-helpers`), o cálculo de estoque (`calcularEstoqueNovo`), a geração de código interno e a máscara de telefone — regras puras extraídas das rotas para serem testáveis sem banco.
 
 ### Variáveis adicionais (opcionais)
 
@@ -359,7 +396,6 @@ Evolução mapeada a partir do próprio código:
 
 - **Rate limiting** nos endpoints públicos do formulário sem login usando o cliente Upstash Redis já configurado;
 - **Camada de cache** para consultas de leitura de alto tráfego;
-- **Suíte automatizada de testes** (unitários e de integração das rotas críticas);
 - **Integração com ERP**, retomável quando o contexto organizacional/contratual permitir — o modelo de dados normalizado e auditável foi desenhado para viabilizar esse passo.
 
 ---

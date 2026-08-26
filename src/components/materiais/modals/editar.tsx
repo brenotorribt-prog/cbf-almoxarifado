@@ -494,7 +494,7 @@ export default function EditarMaterialModal({ material, onClose, onSalvo }: Edit
   const [estoqueMaximo, setEstoqueMaximo] = useState(String(material.estoqueMaximo || ""))
 
   // foto: null = sem alteração, "" = remover, Blob = nova foto pendente de upload
-  const [fotoUrlAtual, setFotoUrlAtual] = useState(material.fotoUrl)
+  const [fotoUrlAtual] = useState(material.fotoUrl)
   const [fotoRemovida, setFotoRemovida] = useState(false)
   const [fotoArquivoOriginal, setFotoArquivoOriginal] = useState<File | null>(null)
   const [fotoBlobComprimido, setFotoBlobComprimido] = useState<Blob | null>(null)
@@ -676,7 +676,7 @@ export default function EditarMaterialModal({ material, onClose, onSalvo }: Edit
             <ModalTitle>Editar material</ModalTitle>
             <ModalSubtitle>
               Alterações aqui não mudam a quantidade em estoque — pra registrar entrada ou saída,
-              use "Movimentações".
+              use &quot;Movimentações&quot;.
             </ModalSubtitle>
           </div>
           <FecharButton type="button" onClick={onClose} title="Fechar">
@@ -696,7 +696,7 @@ export default function EditarMaterialModal({ material, onClose, onSalvo }: Edit
             <strong>{material.estoqueAtual}</strong>{" "}
             <span>{material.unidadeMedida.sigla} em estoque</span>
           </div>
-          <span>Editável via "Movimentações"</span>
+          <span>Editável via &quot;Movimentações&quot;</span>
         </EstoqueAtualBox>
 
         <Secao>

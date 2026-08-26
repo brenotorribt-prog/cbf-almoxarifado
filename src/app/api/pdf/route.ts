@@ -10,35 +10,21 @@ import path from 'path'
 import { MovimentacaoPDF } from '@/components/pdf/MovimentacaoPDF'
 import { EmprestimoPDF } from '@/components/pdf/EmprestimoPDF'
 
-// Helper para obter a URL base da aplicação
-function getBaseUrl() {
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL
-  }
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`
-  }
-  return 'http://localhost:3000'
-}
-
 // ✅ Função para converter imagem para Base64
 function getImageBase64(filePath: string): string | null {
   try {
     const fullPath = path.join(process.cwd(), 'public', filePath)
-    console.log(`🔍 Procurando imagem em: ${fullPath}`)
-    
+
     if (!fs.existsSync(fullPath)) {
-      console.log(`⚠️ Imagem não encontrada: ${filePath}`)
       return null
     }
-    
+
     const buffer = fs.readFileSync(fullPath)
     const base64 = buffer.toString('base64')
     const ext = path.extname(filePath).substring(1) // png, jpg, etc
-    console.log(`✅ Imagem carregada: ${filePath} (${buffer.length} bytes)`)
     return `data:image/${ext};base64,${base64}`
   } catch (error) {
-    console.error(`❌ Erro ao ler imagem ${filePath}:`, error)
+    console.error('Erro ao ler imagem:', error)
     return null
   }
 }

@@ -10,7 +10,7 @@
  * digitados na mão).
  */
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef } from "react"
 import styled, { keyframes } from "styled-components"
 import { theme, hexToRgba } from "@/styles/theme"
 import {
@@ -21,11 +21,7 @@ import {
   Plus,
   Trash2,
   Search,
-  Package,
   PackageSearch,
-  ChevronDown,
-  Building,
-  Users,
   UserRound,
 } from "lucide-react"
 

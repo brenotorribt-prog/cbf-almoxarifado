@@ -173,14 +173,6 @@ const ConfirmButton = styled.button<{ $variant: "danger" | "ghost" }>`
     cursor: not-allowed;
   }
 `
-
-const fadeIn = keyframes`from { opacity: 0; } to { opacity: 1; }`
-const slideIn = keyframes`
-  from { opacity: 0; transform: translateY(-12px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-`
-const spin = keyframes`to { transform: rotate(360deg); }`
-
 export default function Sidebar({
   user = { name: "Usuário Convidado", role: "Almoxarife" },
   onLogout,
