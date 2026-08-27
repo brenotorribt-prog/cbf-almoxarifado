@@ -17,11 +17,20 @@ export const hexColorNullable = z
   .regex(HEX_RE, "Cor inválida — use o formato hexadecimal #RRGGBB")
   .nullable()
 
+/**
+ * Teto de caracteres do nome da organização. O nome é exibido como
+ * `BrandName` na sidebar (e no login) — acima disso o layout corta o texto.
+ * Fonte ÚNICA de verdade: o schema da API valida com este valor e o front
+ * usa no `maxLength` do input e no contador (sem duplicar números mágicos).
+ */
+export const NOME_ORGANIZACAO_MAX = 11
+
+
 export const nomeOrganizacaoSchema = z
   .string()
   .trim()
   .min(1, "Informe o nome da organização")
-  .max(80, "Máximo de 80 caracteres")
+  .max(NOME_ORGANIZACAO_MAX, `Máximo de ${NOME_ORGANIZACAO_MAX} caracteres`)
 
 /**
  * Aceita referências de imagem que a aplicação conhece:

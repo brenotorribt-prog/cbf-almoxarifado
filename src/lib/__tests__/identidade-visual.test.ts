@@ -30,6 +30,7 @@ import {
   validarArquivoImagem,
   sugerirProporcao,
   normalizarIdentidadeVisual,
+  NOME_ORGANIZACAO_MAX,
 } from "@/lib/configuracoes/identidade-visual-schema"
 import {
   isHexColor,
@@ -81,7 +82,7 @@ describe("validação de cores", () => {
 // =====================================================================
 describe("identidadeVisualPatchSchema", () => {
   const payloadValido = {
-    nomeOrganizacao: "Minha Organização",
+    nomeOrganizacao: "Minha Org",
     cores: {
       primary: "#009C3B",
       accent: null,
@@ -100,6 +101,26 @@ describe("identidadeVisualPatchSchema", () => {
 
   it("aceita payload completo válido", () => {
     expect(identidadeVisualPatchSchema.safeParse(payloadValido).success).toBe(true)
+  })
+
+  it("aceita nome da organização exatamente no limite", () => {
+    const r = identidadeVisualPatchSchema.safeParse({
+      ...payloadValido,
+      nomeOrganizacao: "a".repeat(NOME_ORGANIZACAO_MAX),
+    })
+    expect(r.success).toBe(true)
+  })
+
+  it("rejeita nome da organização acima do limite e aponta o campo", () => {
+    const r = identidadeVisualPatchSchema.safeParse({
+      ...payloadValido,
+      nomeOrganizacao: "a".repeat(NOME_ORGANIZACAO_MAX + 1),
+    })
+    expect(r.success).toBe(false)
+    if (!r.success) {
+      expect(r.error.flatten().fieldErrors.nomeOrganizacao).toBeDefined()
+      expect(r.error.flatten().fieldErrors.nomeOrganizacao?.[0]).toMatch(/11/)
+    }
   })
 
   it("rejeita patch vazio (nada para atualizar)", () => {

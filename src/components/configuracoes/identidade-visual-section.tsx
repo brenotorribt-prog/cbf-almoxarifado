@@ -3,11 +3,17 @@
 /**
  * Configurações → Identidade visual (visível SOMENTE para ADMIN).
  * Cores + nome da organização + uploads R2 para logo e backgrounds,
- * com previews realistas (login 16:9, sidebar vertical) e warnings de
- * proporção calculados no cliente antes do upload.
+ * com previews FIÉIS ao resultado final (mesmas transformações do
+ * resolveVisualTheme: scrim da sidebar, opacidade de superfície) e
+ * warnings de proporção calculados no cliente antes do upload.
+ *
+ * Upload é ADIADO: selecionar um arquivo só gera preview local (blob URL)
+ * e guarda o File em memória. O upload real pro R2 só acontece no clique
+ * de "Salvar" — evita acumular assets órfãos no bucket quando o admin
+ * troca de imagem várias vezes ou fecha a aba sem salvar.
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import styled from "styled-components"
 import {
@@ -17,25 +23,36 @@ import {
 import {
   validarArquivoImagem,
   sugerirProporcao,
+  NOME_ORGANIZACAO_MAX,
   type TipoAssetBranding,
 } from "@/lib/configuracoes/identidade-visual-schema"
 import { hexToRgba } from "@/styles/theme"
+import { rgbaFromHex } from "@/styles/visual-identity"
 
 const CAMPOS_COR = [
-  { key: "primary", label: "Cor primária" },
-  { key: "accent", label: "Cor secundária / accent" },
-  { key: "destaque", label: "Cor de destaque" },
-  { key: "background", label: "Background principal" },
-  { key: "surface", label: "Superfícies / cards" },
-  { key: "sidebar", label: "Sidebar" },
-  { key: "textPrimary", label: "Texto principal" },
-  { key: "textSecondary", label: "Texto secundário" },
-  { key: "linkColor", label: "Links" },
+  { key: "primary", label: "Cor primária", dica: "Botões principais e destaques de ação" },
+  { key: "accent", label: "Cor secundária / accent", dica: "Ícones ativos e barra lateral de seleção na sidebar" },
+  { key: "destaque", label: "Cor de destaque", dica: "Badges, alertas e elementos de chamada visual" },
+  { key: "background", label: "Background principal", dica: "Fundo geral das páginas do sistema" },
+  { key: "surface", label: "Superfícies / cards", dica: "Fundo de cards e painéis (aplicado com leve transparência)" },
+  { key: "sidebar", label: "Sidebar", dica: "Cor base da barra lateral (por trás da imagem de fundo)" },
+  { key: "textPrimary", label: "Texto principal", dica: "Títulos e textos de maior ênfase" },
+  { key: "textSecondary", label: "Texto secundário", dica: "Legendas, rótulos e textos de apoio" },
+  { key: "linkColor", label: "Links", dica: "Cor de links e ações de texto clicáveis" },
 ] as const
 
 type CampoCorKey = (typeof CAMPOS_COR)[number]["key"]
 type CoresForm = Record<CampoCorKey, string>
 const HEX_LOCAL = /^#[0-9a-fA-F]{6}$/
+
+// Mesma transparência/derivação usada pelo resolver real (visual-identity.ts)
+// para superfícies — mantido em um único lugar para não divergir do preview.
+const SURFACE_CARD_ALPHA = 0.86
+
+interface ImagemPendente {
+  file: File
+  previewUrl: string
+}
 
 interface ImagensForm {
   logoUrl: string
@@ -53,20 +70,33 @@ const CARDS_IMAGEM: Array<{
   { tipo: "sidebar", titulo: "Background da Sidebar", rec: "Recomendado: imagem vertical (ex.: 800×1200). Imagens horizontais sofrerão cortes significativos." },
 ]
 
+function mapearCampoImagem(t: TipoAssetBranding): keyof ImagensForm {
+  if (t === "logo") return "logoUrl"
+  if (t === "login") return "loginBackgroundUrl"
+  return "sidebarBackgroundUrl"
+}
+
 export function SecaoIdentidadeVisual() {
   const router = useRouter()
 
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
-  const [enviando, setEnviando] = useState<TipoAssetBranding | null>(null)
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null)
 
   const [nome, setNome] = useState("")
   const [cores, setCores] = useState<CoresForm>(
     () => Object.fromEntries(CAMPOS_COR.map((c) => [c.key, ""])) as CoresForm
   )
+  // Imagens já persistidas (vindas do backend / já salvas anteriormente).
   const [imagens, setImagens] = useState<ImagensForm>({ logoUrl: "", loginBackgroundUrl: "", sidebarBackgroundUrl: "" })
+  // Imagens selecionadas agora, ainda NÃO enviadas pro R2 — só sobem no Salvar.
+  const [pendentes, setPendentes] = useState<Partial<Record<TipoAssetBranding, ImagemPendente>>>({})
   const [avisos, setAvisos] = useState<Partial<Record<TipoAssetBranding, string>>>({})
+
+  // Guarda todas as blob URLs já criadas nesta sessão, pra garantir que
+  // TODAS sejam revogadas no unmount — mesmo as que nunca chegaram a
+  // completar o onload (arquivo corrompido, por exemplo).
+  const blobUrlsAtivas = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     let ativo = true
@@ -90,6 +120,14 @@ export function SecaoIdentidadeVisual() {
     }
   }, [])
 
+  // Revoga todas as blob URLs criadas quando o componente desmonta.
+  useEffect(() => {
+    const urls = blobUrlsAtivas.current
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u))
+    }
+  }, [])
+
   // Preview usa o valor digitado ou, na ausência, uma amostra neutra
   // (não o tema atual — evita acoplamento com chaves internas do Theme).
   const SWATCH_PADRAO: Record<CampoCorKey, string> = {
@@ -106,7 +144,7 @@ export function SecaoIdentidadeVisual() {
   const valorDe = (campo: CampoCorKey) =>
     (cores[campo] && HEX_LOCAL.test(cores[campo]) ? cores[campo] : "") || SWATCH_PADRAO[campo]
 
-  async function onSelecionarImagem(tipo: TipoAssetBranding, file: File | undefined) {
+  function onSelecionarImagem(tipo: TipoAssetBranding, file: File | undefined) {
     if (!file) return
     const erro = validarArquivoImagem(file.type, file.size)
     if (erro) {
@@ -114,8 +152,21 @@ export function SecaoIdentidadeVisual() {
       return
     }
 
-    // Warning de proporção (não bloqueia) calculado no cliente
-    const urlObj = URL.createObjectURL(file)
+    // Preview local imediato — nada sobe pro servidor ainda.
+    const previewUrl = URL.createObjectURL(file)
+    blobUrlsAtivas.current.add(previewUrl)
+
+    // Libera a blob URL anterior deste mesmo campo, se havia uma pendente.
+    setPendentes((prev) => {
+      const anterior = prev[tipo]
+      if (anterior) {
+        URL.revokeObjectURL(anterior.previewUrl)
+        blobUrlsAtivas.current.delete(anterior.previewUrl)
+      }
+      return { ...prev, [tipo]: { file, previewUrl } }
+    })
+
+    // Warning de proporção (não bloqueia), calculado a partir do próprio preview.
     const img = new window.Image()
     img.onload = () => {
       const s = sugerirProporcao(tipo)
@@ -126,38 +177,88 @@ export function SecaoIdentidadeVisual() {
       } else {
         setAvisos((a) => ({ ...a, [tipo]: undefined }))
       }
-      URL.revokeObjectURL(urlObj)
     }
-    img.src = urlObj
-
-    setEnviando(tipo)
-    try {
-      const fd = new FormData()
-      fd.set("arquivo", file)
-      fd.set("tipo", tipo)
-      const res = await fetch("/api/configuracoes/identidade-visual/upload", { method: "POST", body: fd })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error ?? "Falha no upload")
-      setImagens((prev) => ({ ...prev, [`${tipo === "logo" ? "logoUrl" : tipo === "login" ? "loginBackgroundUrl" : "sidebarBackgroundUrl"}`]: data.url }))
-      setFeedback({ ok: true, msg: "Imagem enviada. Clique em Salvar para aplicar." })
-    } catch (err) {
-      setFeedback({ ok: false, msg: err instanceof Error ? err.message : "Falha no upload" })
-    } finally {
-      setEnviando(null)
+    img.onerror = () => {
+      URL.revokeObjectURL(previewUrl)
+      blobUrlsAtivas.current.delete(previewUrl)
+      setPendentes((prev) => {
+        const { [tipo]: _remover, ...resto } = prev
+        return resto
+      })
+      setFeedback({ ok: false, msg: "Não foi possível ler essa imagem — o arquivo pode estar corrompido." })
     }
+    img.src = previewUrl
   }
+
+  function removerImagem(tipo: TipoAssetBranding) {
+    const campo = mapearCampoImagem(tipo)
+    setPendentes((prev) => {
+      const p = prev[tipo]
+      if (p) {
+        URL.revokeObjectURL(p.previewUrl)
+        blobUrlsAtivas.current.delete(p.previewUrl)
+      }
+      const { [tipo]: _remover, ...resto } = prev
+      return resto
+    })
+    setImagens((prev) => ({ ...prev, [campo]: "" }))
+    setAvisos((a) => ({ ...a, [tipo]: undefined }))
+  }
+
+  // URL efetiva pra exibir no preview: pendente (local) tem prioridade
+  // sobre a já persistida, já que reflete a seleção mais recente do admin.
+  function urlEfetiva(tipo: TipoAssetBranding): string {
+    const pendente = pendentes[tipo]
+    if (pendente) return pendente.previewUrl
+    return imagens[mapearCampoImagem(tipo)]
+  }
+
+  async function enviarPendente(tipo: TipoAssetBranding): Promise<string> {
+    const pendente = pendentes[tipo]
+    if (!pendente) return imagens[mapearCampoImagem(tipo)]
+
+    const fd = new FormData()
+    fd.set("arquivo", pendente.file)
+    fd.set("tipo", tipo)
+    const res = await fetch("/api/configuracoes/identidade-visual/upload", { method: "POST", body: fd })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error ?? `Falha no upload de ${tipo}`)
+    return data.url as string
+  }
+
   async function salvar() {
-    setSalvando(true)
     setFeedback(null)
+
+    // Guarda client-side — a API revalida com o MESMO limite (ver
+    // NOME_ORGANIZACAO_MAX no schema). Falha ANTES de subir imagens pro R2,
+    // evitando uploads que seriam seguidos de um 400.
+    if (nome.trim().length > NOME_ORGANIZACAO_MAX) {
+      setFeedback({
+        ok: false,
+        msg: `O nome da organização deve ter no máximo ${NOME_ORGANIZACAO_MAX} caracteres.`,
+      })
+      return
+    }
+
+    setSalvando(true)
     try {
+      // 1. Sobe só as imagens que de fato mudaram nesta sessão.
+      const tiposPendentes = Object.keys(pendentes) as TipoAssetBranding[]
+      const urlsFinais = { ...imagens }
+      for (const tipo of tiposPendentes) {
+        const url = await enviarPendente(tipo)
+        urlsFinais[mapearCampoImagem(tipo)] = url
+      }
+
+      // 2. Salva a configuração completa com as URLs finais.
       const body = {
         nomeOrganizacao: nome.trim() ? nome.trim() : null,
         cores: Object.fromEntries(
           CAMPOS_COR.map((c) => [c.key, HEX_LOCAL.test(cores[c.key]) ? cores[c.key] : null])
         ),
-        logoUrl: imagens.logoUrl || null,
-        loginBackgroundUrl: imagens.loginBackgroundUrl || null,
-        sidebarBackgroundUrl: imagens.sidebarBackgroundUrl || null,
+        logoUrl: urlsFinais.logoUrl || null,
+        loginBackgroundUrl: urlsFinais.loginBackgroundUrl || null,
+        sidebarBackgroundUrl: urlsFinais.sidebarBackgroundUrl || null,
       }
       const res = await fetch("/api/configuracoes/identidade-visual", {
         method: "PATCH",
@@ -165,7 +266,24 @@ export function SecaoIdentidadeVisual() {
         body: JSON.stringify(body),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data.error ?? "Falha ao salvar")
+      if (!res.ok) {
+        // A API devolve detalhes por campo (zod .flatten()) — prioriza a
+        // mensagem específica (ex.: nome da organização acima do limite).
+        const erroCampo: string | undefined = data.detalhes?.nomeOrganizacao?.[0]
+        throw new Error(erroCampo ?? data.error ?? "Falha ao salvar")
+      }
+
+      // 3. Sucesso: limpa pendências locais (as blob URLs já foram trocadas
+      // pelas URLs reais do R2) e atualiza o estado persistido.
+      tiposPendentes.forEach((tipo) => {
+        const p = pendentes[tipo]
+        if (p) {
+          URL.revokeObjectURL(p.previewUrl)
+          blobUrlsAtivas.current.delete(p.previewUrl)
+        }
+      })
+      setPendentes({})
+      setImagens(urlsFinais)
       setFeedback({ ok: true, msg: "Identidade visual salva e aplicada na aplicação!" })
       router.refresh()
     } catch (err) {
@@ -190,49 +308,108 @@ export function SecaoIdentidadeVisual() {
       ) : (
         <>
           <BlocoTitulo><Building2 size={13} /> Identidade da organização</BlocoTitulo>
-          <NomeInput value={nome} maxLength={80} placeholder="Ex.: Minha Organização" onChange={(e) => setNome(e.target.value)} />
+          <CampoLabel htmlFor="nome-organizacao">Nome da organização</CampoLabel>
+          <NomeRow>
+            <NomeInput
+              id="nome-organizacao"
+              value={nome}
+              maxLength={NOME_ORGANIZACAO_MAX}
+              placeholder="Ex.: Minha Org"
+              onChange={(e) => setNome(e.target.value)}
+            />
+            <ContadorCaracteres $excedido={nome.trim().length > NOME_ORGANIZACAO_MAX}>
+              {nome.length}/{NOME_ORGANIZACAO_MAX}
+            </ContadorCaracteres>
+          </NomeRow>
 
           <BlocoTitulo><Palette size={13} /> Cores</BlocoTitulo>
           <GridCores>
-            {CAMPOS_COR.map((c) => (
-              <LinhaCor key={c.key}>
-                <CorSwatch $cor={valorDe(c.key)} />
-                <LabelCor>{c.label}</LabelCor>
-                <input type="color" value={HEX_LOCAL.test(valorDe(c.key)) ? valorDe(c.key) : "#000000"} onChange={(e) => setCores((p) => ({ ...p, [c.key]: e.target.value }))} />
-                <HexInput value={cores[c.key]} placeholder="#RRGGBB" $invalido={!!cores[c.key] && !HEX_LOCAL.test(cores[c.key])} onChange={(e) => setCores((p) => ({ ...p, [c.key]: e.target.value.trim() }))} />
-              </LinhaCor>
-            ))}
+            {CAMPOS_COR.map((c) => {
+              const inputId = `cor-${c.key}`
+              return (
+                <LinhaCor key={c.key}>
+                  <CorSwatch $cor={valorDe(c.key)} />
+                  <TextoCor>
+                    <CampoLabel htmlFor={inputId}>{c.label}</CampoLabel>
+                    <DicaCor>{c.dica}</DicaCor>
+                  </TextoCor>
+                  <input
+                    id={inputId}
+                    type="color"
+                    value={HEX_LOCAL.test(valorDe(c.key)) ? valorDe(c.key) : "#000000"}
+                    onChange={(e) => setCores((p) => ({ ...p, [c.key]: e.target.value }))}
+                  />
+                  <HexInput
+                    aria-label={`Código hexadecimal — ${c.label}`}
+                    value={cores[c.key]}
+                    placeholder="#RRGGBB"
+                    $invalido={!!cores[c.key] && !HEX_LOCAL.test(cores[c.key])}
+                    onChange={(e) => setCores((p) => ({ ...p, [c.key]: e.target.value.trim() }))}
+                  />
+                </LinhaCor>
+              )
+            })}
           </GridCores>
 
+          {/* Preview fiel: reaproveita rgbaFromHex do resolver real
+              (visual-identity.ts), então a transparência de superfície e o
+              scrim da sidebar aqui são os MESMOS aplicados em produção —
+              não uma aproximação da cor crua. */}
           <PreviewMoldura>
             <PreviewBotao $bg={valorDe("primary")}>Botão primário</PreviewBotao>
-            <PreviewCard $bg={valorDe("surface")} $t1={valorDe("textPrimary")} $t2={valorDe("textSecondary")}>
+            <PreviewCard
+              $bg={rgbaFromHex(valorDe("surface"), SURFACE_CARD_ALPHA)}
+              $border={rgbaFromHex(valorDe("surface"), 0.55)}
+              $t1={valorDe("textPrimary")}
+              $t2={valorDe("textSecondary")}
+            >
               <strong>Título do card</strong>
               <span>Texto secundário de exemplo dentro da superfície.</span>
               <em style={{ color: valorDe("linkColor") }}>link de exemplo</em>
             </PreviewCard>
-            <PreviewSidebarMini $bg={valorDe("sidebar")}><span /><span /><span /></PreviewSidebarMini>
+            <PreviewSidebarMini $bg={valorDe("sidebar")}>
+              <ScrimSidebarMini />
+              <ConteudoSidebarMini>
+                <span />
+                <span />
+              </ConteudoSidebarMini>
+            </PreviewSidebarMini>
           </PreviewMoldura>
+          <PreviewLegenda>
+            Este preview aplica a mesma opacidade de superfície e o mesmo escurecimento da sidebar usados no sistema real.
+          </PreviewLegenda>
 
           <BlocoTitulo><ImageIcon size={13} /> Imagens da identidade</BlocoTitulo>
           <GridImagens>
             {CARDS_IMAGEM.map((ci) => {
-              const campo = mapearCampoImagem(ci.tipo)
+              const urlAtual = urlEfetiva(ci.tipo)
+              const temPendencia = !!pendentes[ci.tipo]
               return (
                 <CardImagem key={ci.tipo}>
-                  <CardImagemTitulo>{ci.titulo}</CardImagemTitulo>
+                  <CardImagemTitulo>
+                    {ci.titulo}
+                    {temPendencia && <BadgePendente>não salvo</BadgePendente>}
+                  </CardImagemTitulo>
                   <PreviewArea $tipo={ci.tipo}>
-                    {/* eslint-disable-next-line @next/next/no-img-element -- URL dinâmica (R2/branding) */}
-                    {imagens[campo] ? <img src={imagens[campo]} alt={ci.titulo} /> : <SemImagem>Sem imagem configurada — o padrão neutro será usado</SemImagem>}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- URL dinâmica (R2/branding/blob local) */}
+                    {urlAtual ? <img src={urlAtual} alt={ci.titulo} /> : <SemImagem>Sem imagem configurada — o padrão neutro será usado</SemImagem>}
                   </PreviewArea>
                   {avisos[ci.tipo] && <AvisoProporcao><AlertTriangle size={12} /> {avisos[ci.tipo]}</AvisoProporcao>}
                   <Rec>{ci.rec}</Rec>
                   <BotoesImagem>
                     <BotaoPequeno>
-                      {enviando === ci.tipo ? <Loader2 size={13} className="spin" /> : <Upload size={13} />} Enviar
-                      <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { onSelecionarImagem(ci.tipo, e.target.files?.[0]); e.currentTarget.value = "" }} />
+                      <Upload size={13} /> {urlAtual ? "Trocar" : "Enviar"}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        hidden
+                        onChange={(e) => {
+                          onSelecionarImagem(ci.tipo, e.target.files?.[0])
+                          e.currentTarget.value = ""
+                        }}
+                      />
                     </BotaoPequeno>
-                    <BotaoPequeno onClick={() => { setImagens((p) => ({ ...p, [campo]: "" })); setAvisos((a) => ({ ...a, [ci.tipo]: undefined })) }} $disabled={!imagens[campo]}>
+                    <BotaoPequeno as="button" type="button" onClick={() => removerImagem(ci.tipo)} $disabled={!urlAtual}>
                       <Trash2 size={13} /> Remover
                     </BotaoPequeno>
                   </BotoesImagem>
@@ -244,7 +421,8 @@ export function SecaoIdentidadeVisual() {
           {feedback && <Feedback $ok={feedback.ok}>{feedback.ok ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />} {feedback.msg}</Feedback>}
 
           <SalvarBtn onClick={salvar} disabled={salvando || carregando}>
-            {salvando ? <Loader2 size={15} className="spin" /> : <Save size={15} />} Salvar identidade visual
+            {salvando ? <Loader2 size={15} className="spin" /> : <Save size={15} />}
+            {salvando ? "Enviando imagens e salvando…" : "Salvar identidade visual"}
           </SalvarBtn>
         </>
       )}
@@ -252,11 +430,6 @@ export function SecaoIdentidadeVisual() {
   )
 }
 
-function mapearCampoImagem(t: TipoAssetBranding): keyof ImagensForm {
-  if (t === "logo") return "logoUrl"
-  if (t === "login") return "loginBackgroundUrl"
-  return "sidebarBackgroundUrl"
-}
 // =====================================================================
 // ESTILOS DA SEÇÃO
 // =====================================================================
@@ -323,6 +496,14 @@ const BlocoTitulo = styled.div`
   color: ${({ theme }) => theme.colors.text.secondary};
 `
 
+const CampoLabel = styled.label`
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: ${({ theme }) => theme.colors.text.primary};
+  margin-bottom: 4px;
+`
+
 const NomeInput = styled.input`
   width: 100%;
   max-width: 420px;
@@ -336,10 +517,26 @@ const NomeInput = styled.input`
   &:focus { border-color: ${({ theme }) => theme.colors.primary.vivid}; }
 `
 
+/* Input + contador na mesma linha — o contador mostra o limite do nome
+ * (NOME_ORGANIZACAO_MAX) que também é validado pela API. */
+const NomeRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${({ theme }) => theme.spacing[2]};
+  max-width: 420px;
+`
+
+const ContadorCaracteres = styled.span<{ $excedido: boolean }>`
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: ${({ $excedido }) => ($excedido ? "#fbbf24" : "rgba(255, 255, 255, 0.45)")};
+`
+
 const GridCores = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: ${({ theme }) => theme.spacing[2]} ${({ theme }) => theme.spacing[4]};
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: ${({ theme }) => theme.spacing[3]} ${({ theme }) => theme.spacing[4]};
 `
 
 const LinhaCor = styled.div`
@@ -357,14 +554,22 @@ const CorSwatch = styled.div<{ $cor: string }>`
   border: 1px solid rgba(255, 255, 255, 0.25);
 `
 
-const LabelCor = styled.span`
+const TextoCor = styled.div`
   flex: 1;
-  font-size: 0.8rem;
-  color: ${({ theme }) => theme.colors.text.primary};
+  min-width: 0;
+`
+
+const DicaCor = styled.p`
+  margin: 1px 0 0;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: ${({ theme }) => theme.colors.text.secondary};
+  opacity: 0.75;
 `
 
 const HexInput = styled.input<{ $invalido?: boolean }>`
   width: 92px;
+  flex-shrink: 0;
   padding: 6px 8px;
   font-family: ${({ theme }) => theme.typography.fontFamily.mono};
   font-size: 0.78rem;
@@ -389,6 +594,13 @@ const PreviewMoldura = styled.div`
   border: 1px dashed rgba(255, 255, 255, 0.12);
 `
 
+const PreviewLegenda = styled.p`
+  margin: 6px 0 0;
+  font-size: 0.68rem;
+  color: ${({ theme }) => theme.colors.text.secondary};
+  opacity: 0.7;
+`
+
 const PreviewBotao = styled.button<{ $bg: string }>`
   align-self: center;
   padding: 10px 18px;
@@ -401,13 +613,13 @@ const PreviewBotao = styled.button<{ $bg: string }>`
   cursor: default;
 `
 
-const PreviewCard = styled.div<{ $bg: string; $t1: string; $t2: string }>`
+const PreviewCard = styled.div<{ $bg: string; $border: string; $t1: string; $t2: string }>`
   flex: 1;
   min-width: 200px;
   padding: ${({ theme }) => theme.spacing[3]};
   border-radius: ${({ theme }) => theme.radii.sm};
   background: ${(p) => p.$bg};
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid ${(p) => p.$border};
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -416,11 +628,31 @@ const PreviewCard = styled.div<{ $bg: string; $t1: string; $t2: string }>`
   em { font-size: 0.76rem; font-style: normal; }
 `
 
+// Mesma composição da sidebar real (Aside, em Sidebar.tsx): cor base +
+// scrim escuro por cima. Sem isso, o admin via a cor crua e a sidebar
+// de verdade ficava sensivelmente mais escura do que o preview prometia.
 const PreviewSidebarMini = styled.div<{ $bg: string }>`
+  position: relative;
   width: 72px;
+  overflow: hidden;
   border-radius: ${({ theme }) => theme.radii.sm};
   background: ${(p) => p.$bg};
   border: 1px solid rgba(255, 255, 255, 0.1);
+`
+
+const ScrimSidebarMini = styled.div`
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 22, 40, 0.6) 0%,
+    rgba(10, 22, 40, 0.58) 50%,
+    rgba(10, 22, 40, 0.68) 100%
+  );
+`
+
+const ConteudoSidebarMini = styled.div`
+  position: relative;
   padding: 10px 8px;
   display: flex;
   flex-direction: column;
@@ -446,8 +678,23 @@ const CardImagem = styled.div`
 `
 
 const CardImagemTitulo = styled.strong`
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.83rem;
   color: ${({ theme }) => theme.colors.text.primary};
+`
+
+const BadgePendente = styled.span`
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: ${({ theme }) => theme.radii.full};
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.35);
 `
 
 const PreviewArea = styled.div<{ $tipo: TipoAssetBranding }>`

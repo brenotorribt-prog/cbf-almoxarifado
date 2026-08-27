@@ -575,6 +575,21 @@ const SelectFiltro = styled.select`
   color-scheme: dark;
   cursor: pointer;
 
+  /* Lista aberta (popup nativa): fundo escuro sólido + texto claro.
+   * Sem isso o Chromium achata o vidro translúcido sobre BRANCO e as
+   * opções ficam invisíveis (só aparecem no hover do SO).
+   * Mesmas cores da regra global em GlobalStyles — mantida aqui pra
+   * garantir o contraste na página mesmo se a global mudar. */
+  option {
+    background-color: ${({ theme }) => theme.colors.surface.dropdown};
+    color: ${({ theme }) => theme.colors.text.primary};
+
+    &:checked,
+    &:hover {
+      background-color: ${({ theme }) => theme.colors.surface.dropdownActive};
+    }
+  }
+
   &:focus {
     outline: none;
     border-color: ${({ theme }) => theme.colors.primary.vivid};

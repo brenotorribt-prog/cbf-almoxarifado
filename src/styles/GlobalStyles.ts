@@ -129,9 +129,34 @@ export const GlobalStyles = createGlobalStyle`
 
     font: inherit;
 
+    /* App é dark-only: widgets nativos (popup do select, date picker,
+     * scrollbars internas) seguem o esquema escuro em todas as telas. */
+    color-scheme: dark;
+
     &::placeholder {
       color: ${({ theme }) => theme.colors.text.muted};
     }
+  }
+
+  /* Popup nativa do <select> — sem estas regras o Chromium usa o background
+   * translúcido do controle achatado sobre BRANCO na lista aberta e o texto
+   * (claro) herda esse fundo: opções invisíveis, só aparecem no hover.
+   * Cor sólida do tema = mesmo tom da sidebar (ver surface.dropdown). */
+  select option,
+  select optgroup {
+    background-color: ${({ theme }) => theme.colors.surface.dropdown};
+    color: ${({ theme }) => theme.colors.text.primary};
+  }
+
+  select optgroup {
+    color: ${({ theme }) => theme.colors.text.muted};
+    font-style: normal;
+  }
+
+  select option:checked,
+  select option:hover {
+    background-color: ${({ theme }) => theme.colors.surface.dropdownActive};
+    color: ${({ theme }) => theme.colors.text.primary};
   }
 
   ul,

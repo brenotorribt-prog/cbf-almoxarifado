@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   await r2.send(
     new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET!,
+      Bucket: process.env.R2_BUCKET_NAME!,
       Key: chave,
       Body: buffer,
       ContentType: arquivo.type,

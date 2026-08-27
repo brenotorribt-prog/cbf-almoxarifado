@@ -77,6 +77,12 @@ export const theme = {
       borderStrong: 'rgba(109,191,160,0.3)',
       overlay: 'rgba(3,7,18,0.7)',
       glass: 'rgba(255,255,255,0.04)',
+      // Popup nativa de <select> (lista aberta). Precisa ser cor SÓLIDA, sem
+      // alpha: o Chromium achata cores translúcidas sobre BRANCO na popup e,
+      // como o texto é claro, as opções ficam invisíveis (bug da página de
+      // Relatórios). Tons da mesma família da sidebar/header.
+      dropdown: '#0a1628',
+      dropdownActive: '#1e3a63',
     },
     text: {
       primary: '#ffffff',

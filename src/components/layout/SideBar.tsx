@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import type { MouseEvent } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import styled, { css, keyframes, useTheme } from "styled-components"
@@ -51,6 +52,8 @@ export interface SidebarUser {
 }
 
 interface SidebarProps {
+  /** Usado só como fallback opcional enquanto /api/perfil não responde.
+   *  Se omitido, o Sidebar mostra skeleton -> perfil real -> erro (com retry). */
   user?: SidebarUser
   onLogout?: () => void
 }
@@ -79,6 +82,8 @@ interface PerfilSidebar {
   role: string
   image: string | null
 }
+
+type PerfilStatus = "loading" | "ready" | "error"
 
 // =====================================================================
 // MODAL DE CONFIRMAÇÃO DE LOGOUT (Sidebar)
@@ -173,15 +178,14 @@ const ConfirmButton = styled.button<{ $variant: "danger" | "ghost" }>`
     cursor: not-allowed;
   }
 `
-export default function Sidebar({
-  user = { name: "Usuário Convidado", role: "Almoxarife" },
-  onLogout,
-}: SidebarProps) {
+
+export default function Sidebar({ user, onLogout }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const { collapsed, toggleCollapsed, mobileOpen, openMobile, closeMobile } = useSidebar()
   const theme = useTheme()
   const [perfil, setPerfil] = useState<PerfilSidebar | null>(null)
+  const [perfilStatus, setPerfilStatus] = useState<PerfilStatus>("loading")
   const [perfilAberto, setPerfilAberto] = useState(false)
 
   const [travellingIndex, setTravellingIndex] = useState<number | null>(null)
@@ -192,13 +196,16 @@ export default function Sidebar({
   const [saindo, setSaindo] = useState(false)
 
   const carregarPerfil = useCallback(async () => {
+    setPerfilStatus((prev) => (prev === "ready" ? prev : "loading"))
     try {
       const res = await fetch("/api/perfil")
-      if (!res.ok) return
+      if (!res.ok) throw new Error(`Falha ao carregar perfil (${res.status})`)
       const data = await res.json()
       setPerfil(data.usuario)
+      setPerfilStatus("ready")
     } catch {
-      // Falha silenciosa aqui: o Sidebar cai no fallback `user` abaixo.
+      // Sem fallback fictício: a UI mostra estado de erro com opção de retry.
+      setPerfilStatus("error")
     }
   }, [])
 
@@ -213,13 +220,16 @@ export default function Sidebar({
     isActive(item.href)
   )
 
-  // Usuário exibido: prioriza o perfil real (Prisma), cai no prop `user` só
-  // como fallback enquanto o perfil carrega (evita "flash" de usuário genérico)
-  const usuarioExibido: SidebarUser = {
-    name: perfil ? `${perfil.nome} ${perfil.sobrenome}`.trim() : user.name,
-    role: perfil?.role ? ROLE_LABELS[perfil.role] ?? perfil.role : user.role,
-    avatarUrl: perfil?.image ?? user.avatarUrl,
-  }
+  // Usuário exibido: perfil real (Prisma) tem prioridade; `user` só é usado
+  // como fallback explícito se o chamador passar um. Se nada existir ainda,
+  // é `null` — a UI trata loading/erro visualmente, sem inventar nome.
+  const usuarioExibido: SidebarUser | null = perfil
+    ? {
+        name: `${perfil.nome} ${perfil.sobrenome}`.trim(),
+        role: perfil.role ? ROLE_LABELS[perfil.role] ?? perfil.role : undefined,
+        avatarUrl: perfil.image ?? undefined,
+      }
+    : user ?? null
 
   useEffect(() => {
     const from = previousIndex.current
@@ -256,8 +266,20 @@ export default function Sidebar({
     return () => timers.forEach(clearTimeout)
   }, [activeIndex])
 
+  // Clique na linha de perfil: abre o modal se já temos dados; se falhou,
+  // tenta recarregar; se ainda está carregando, não faz nada.
+  const handleProfileRowClick = useCallback(() => {
+    if (usuarioExibido) {
+      setPerfilAberto(true)
+      return
+    }
+    if (perfilStatus === "error") {
+      carregarPerfil()
+    }
+  }, [usuarioExibido, perfilStatus, carregarPerfil])
+
   // Função que abre o modal de confirmação de logout
-  const handleAbrirConfirmLogout = useCallback((e: React.MouseEvent) => {
+  const handleAbrirConfirmLogout = useCallback((e: MouseEvent) => {
     e.stopPropagation() // impede que o clique também abra o modal de perfil
     setMostrarConfirmLogout(true)
   }, [])
@@ -267,12 +289,12 @@ export default function Sidebar({
     setSaindo(true)
     try {
       setMostrarConfirmLogout(false)
-      
+
       if (onLogout) {
         await onLogout()
         return
       }
-      
+
       const supabase = createClient()
       await supabase.auth.signOut()
       router.push("/login")
@@ -333,7 +355,7 @@ export default function Sidebar({
                 const Icon = item.icon
                 const active = isActive(item.href)
                 const travelling = travellingIndex === index
-                
+
                 return (
                   <li key={item.href}>
                     <NavLink
@@ -341,6 +363,7 @@ export default function Sidebar({
                       $active={active}
                       $collapsed={collapsed}
                       title={collapsed ? item.label : undefined}
+                      aria-current={active ? "page" : undefined}
                       whileHover={{ x: 2 }}
                       whileTap={{ scale: 0.985 }}
                       transition={{
@@ -456,31 +479,61 @@ export default function Sidebar({
         <BottomSection>
           <ProfileRow
             $collapsed={collapsed}
-            onClick={() => setPerfilAberto(true)}
+            onClick={handleProfileRowClick}
+            role="button"
+            aria-label={
+              usuarioExibido
+                ? `Abrir perfil de ${usuarioExibido.name}`
+                : perfilStatus === "error"
+                ? "Erro ao carregar perfil, toque para tentar novamente"
+                : "Carregando perfil"
+            }
           >
-            <Avatar>
-              {usuarioExibido.avatarUrl ? (
-                <img src={usuarioExibido.avatarUrl} alt={usuarioExibido.name} />
-              ) : (
-                <span>{getInitials(usuarioExibido.name)}</span>
-              )}
-            </Avatar>
+            {usuarioExibido ? (
+              <Avatar>
+                {usuarioExibido.avatarUrl ? (
+                  <img src={usuarioExibido.avatarUrl} alt={usuarioExibido.name} />
+                ) : (
+                  <span>{getInitials(usuarioExibido.name)}</span>
+                )}
+              </Avatar>
+            ) : perfilStatus === "error" ? (
+              <AvatarFallback title="Erro ao carregar perfil — toque para tentar novamente">
+                <AlertTriangle size={16} />
+              </AvatarFallback>
+            ) : (
+              <AvatarSkeleton />
+            )}
 
             {!collapsed && (
               <ProfileInfo>
-                <ProfileName 
-                  title={`Clique para abrir o perfil - ${usuarioExibido.name}`}
-                >
-                  {usuarioExibido.name}
-                </ProfileName>
-                {usuarioExibido.role && (
-                  <ProfileRole title={usuarioExibido.role}>
-                    {usuarioExibido.role}
-                  </ProfileRole>
+                {usuarioExibido ? (
+                  <>
+                    <ProfileName title={`Clique para abrir o perfil - ${usuarioExibido.name}`}>
+                      {usuarioExibido.name}
+                    </ProfileName>
+                    {usuarioExibido.role && (
+                      <ProfileRole title={usuarioExibido.role}>
+                        {usuarioExibido.role}
+                      </ProfileRole>
+                    )}
+                    <ProfileHint>
+                      <span>Clique para editar perfil</span>
+                    </ProfileHint>
+                  </>
+                ) : perfilStatus === "error" ? (
+                  <>
+                    <ProfileErrorText>Não foi possível carregar o perfil</ProfileErrorText>
+                    <ProfileHint>
+                      <span>Toque para tentar novamente</span>
+                    </ProfileHint>
+                  </>
+                ) : (
+                  <>
+                    <SkeletonLine $width="72%" />
+                    <SkeletonLine $width="46%" style={{ marginTop: 6 }} />
+                  </>
                 )}
-                <ProfileHint>
-                  <span>Clique para editar perfil</span>
-                </ProfileHint>
               </ProfileInfo>
             )}
 
@@ -555,14 +608,14 @@ export default function Sidebar({
 /* estilos                            */
 /* ---------------------------------- */
 
-const shimmer = keyframes`
-  0% { background-position: 0% center; }
-  100% { background-position: 200% center; }
-`
-
 const flow = keyframes`
   0% { background-position: 0% 0%; }
   100% { background-position: 0% 200%; }
+`
+
+const pulse = keyframes`
+  0%, 100% { opacity: .35; }
+  50% { opacity: .8; }
 `
 
 const Aside = styled.aside<{ $collapsed: boolean; $mobileOpen: boolean }>`
@@ -781,6 +834,11 @@ const BrandText = styled.div<{ $collapsed: boolean }>`
   overflow: hidden;
 `
 
+// Gradiente de texto sem `filter: drop-shadow`. Combinar drop-shadow com
+// -webkit-background-clip: text faz o navegador desenhar a sombra na caixa
+// retangular do elemento (antes do clip), não no formato das letras — daí
+// o halo quadrado. Aqui o brilho é só o próprio gradiente animando a
+// posição no hover, sem sombra nenhuma: mais limpo e sem o artefato.
 const BrandName = styled.span`
   font-family: ${({ theme }) => theme.typography.fontFamily.sans};
   font-weight: ${({ theme }) => theme.typography.fontWeight.black};
@@ -793,11 +851,19 @@ const BrandName = styled.span`
     ${({ theme }) => theme.colors.accent.green} 100%
   );
   background-size: 200% auto;
+  background-position: 0% center;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: ${shimmer} 3s linear infinite;
-  text-shadow: none;
-  filter: drop-shadow(0 0 10px ${({ theme }) => hexToRgba(theme.colors.accent.yellow, 0.3)});
+  background-clip: text;
+  transition: background-position 0.7s ease;
+
+  ${Brand}:hover & {
+    background-position: 100% center;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
 `
 
 const BrandSub = styled.span`
@@ -1023,6 +1089,33 @@ const Avatar = styled.div`
   }
 `
 
+const AvatarSkeleton = styled.div`
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: ${({ theme }) => theme.radii.full};
+  background: rgba(255, 255, 255, 0.12);
+  animation: ${pulse} 1.6s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    opacity: 0.5;
+  }
+`
+
+const AvatarFallback = styled.div`
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: ${({ theme }) => theme.radii.full};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: ${({ theme }) => hexToRgba(theme.colors.status.error, 0.16)};
+  color: ${({ theme }) => theme.colors.status.error};
+  border: 1px solid ${({ theme }) => hexToRgba(theme.colors.status.error, 0.35)};
+`
+
 const ProfileInfo = styled.div`
   display: flex;
   flex-direction: column;
@@ -1036,6 +1129,16 @@ const ProfileName = styled.span`
   font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
   font-size: ${({ theme }) => theme.typography.fontSize.sm};
   color: ${({ theme }) => theme.colors.text.primary};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`
+
+const ProfileErrorText = styled.span`
+  font-family: ${({ theme }) => theme.typography.fontFamily.sans};
+  font-weight: ${({ theme }) => theme.typography.fontWeight.semibold};
+  font-size: ${({ theme }) => theme.typography.fontSize.sm};
+  color: ${({ theme }) => theme.colors.status.error};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1063,6 +1166,20 @@ const ProfileHint = styled.div`
 
   ${ProfileRow}:hover & {
     opacity: 0.8;
+  }
+`
+
+const SkeletonLine = styled.span<{ $width: string }>`
+  display: block;
+  height: 10px;
+  width: ${({ $width }) => $width};
+  border-radius: ${({ theme }) => theme.radii.full};
+  background: rgba(255, 255, 255, 0.1);
+  animation: ${pulse} 1.6s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+    opacity: 0.4;
   }
 `
 
