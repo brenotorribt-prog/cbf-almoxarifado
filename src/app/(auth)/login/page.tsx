@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Mail, Lock, Eye, EyeOff, AlertCircle, LogIn, ArrowRight, Shield } from "lucide-react"
 import { hexToRgba } from "@/styles/theme"
 import { rgbaFromHex } from "@/styles/visual-identity"
+import DemoCredenciais from "@/components/auth/DemoCredenciais"
 
 // Componente de fallback para carregamento
 const LoadingFallback = () => (
@@ -267,6 +268,8 @@ function LoginComponent() {
             </RegisterLink>
           </RegisterRow>
         </GlassCard>
+
+        {process.env.NEXT_PUBLIC_DEMO_ENABLED === "true" && <DemoCredenciais />}
       </Wrapper>
     </PageRoot>
   )

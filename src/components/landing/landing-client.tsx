@@ -162,7 +162,7 @@ export default function LandingClient() {
 
             <HeroTitle>
               <TitleLine>
-                <GradientText>CBF</GradientText>
+                <GradientText>Orbit</GradientText>
               </TitleLine>
               <TitleLine $delay={0.1}>
                 Almoxarifado
@@ -185,23 +185,6 @@ export default function LandingClient() {
                 Solicitar Acesso
               </SecondaryButton>
             </HeroActions>
-
-            <StatsRow>
-              <Stat>
-                <StatValue>2.4k+</StatValue>
-                <StatLabel>Itens Catalogados</StatLabel>
-              </Stat>
-              <StatDivider />
-              <Stat>
-                <StatValue>150+</StatValue>
-                <StatLabel>Usuários Ativos</StatLabel>
-              </Stat>
-              <StatDivider />
-              <Stat>
-                <StatValue>99.9%</StatValue>
-                <StatLabel>Uptime</StatLabel>
-              </Stat>
-            </StatsRow>
           </HeroContent>
 
           <ScrollIndicator>
@@ -237,7 +220,7 @@ export default function LandingClient() {
           <CTAContent>
             <CTATitle>Pronto para começar?</CTATitle>
             <CTADesc>
-              Acesso restrito a colaboradores autorizados da CBF.
+              Acesso restrito a colaboradores autorizados.
               Entre com suas credenciais ou solicite acesso ao administrador.
             </CTADesc>
             <CTAActions>
@@ -257,11 +240,11 @@ export default function LandingClient() {
         <Footer>
           <FooterContent>
             <FooterBrand>
-              <FooterLogo>CBF</FooterLogo>
+              <FooterLogo>Orbit</FooterLogo>
               <FooterBrandText>Almoxarifado</FooterBrandText>
             </FooterBrand>
             <FooterCopy>
-              © {new Date().getFullYear()} CBF — Sistema Interno. Acesso restrito.
+              © {new Date().getFullYear()} Orbit — Sistema Interno. Acesso restrito.
             </FooterCopy>
           </FooterContent>
         </Footer>
@@ -513,7 +496,7 @@ const HeroActions = styled.div`
   gap: 16px;
   flex-wrap: wrap;
   justify-content: center;
-  margin-bottom: 60px;
+  margin-bottom: 24px;
   animation: ${fadeInUp} 0.6s ease both;
   animation-delay: 0.4s;
 `
@@ -592,56 +575,6 @@ const SecondaryButton = styled(Link)`
     border-color: rgba(255, 255, 255, 0.15);
     transform: translateY(-2px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-  }
-`
-
-// ---- Stats ----
-const StatsRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 32px;
-  padding: 24px 40px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 16px;
-  backdrop-filter: blur(12px);
-  animation: ${fadeInUp} 0.6s ease both;
-  animation-delay: 0.5s;
-
-  @media (max-width: 640px) {
-    flex-direction: column;
-    gap: 16px;
-    padding: 20px 24px;
-  }
-`
-
-const Stat = styled.div`
-  text-align: center;
-`
-
-const StatValue = styled.div`
-  font-family: var(--font-space), system-ui, sans-serif;
-  font-size: 28px;
-  font-weight: 700;
-  color: #19ae47;
-  line-height: 1;
-`
-
-const StatLabel = styled.div`
-  font-size: 13px;
-  color: rgba(226, 232, 240, 0.5);
-  margin-top: 6px;
-  letter-spacing: 0.02em;
-`
-
-const StatDivider = styled.div`
-  width: 1px;
-  height: 40px;
-  background: rgba(255, 255, 255, 0.08);
-
-  @media (max-width: 640px) {
-    width: 100%;
-    height: 1px;
   }
 `
 

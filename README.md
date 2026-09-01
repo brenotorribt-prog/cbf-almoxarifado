@@ -8,6 +8,31 @@
 ![Supabase Auth](https://img.shields.io/badge/Auth-Supabase-3FCF8E?style=flat-square&logo=supabase)
 ![Cloudflare R2](https://img.shields.io/badge/Storage-Cloudflare%20R2-F38020?style=flat-square&logo=cloudflare)
 
+---
+
+## 🚀 Demonstração
+
+> [!NOTE]
+> **A demo (publicada) ainda não existe.** O link abaixo é um **placeholder**
+> para a URL que aparecerá depois do deploy do ambiente demo
+> (instruções completas em [`docs/DEPLOY_DEMO.md`](docs/DEPLOY_DEMO.md)).
+> Enquanto isso, você pode rodar a demo localmente com dados **100% fictícios**.
+
+[![Demo Online](https://img.shields.io/badge/Demo-Em%20breve-8A9CC4?style=for-the-badge)](https://cbf-almoxarifado-demo.vercel.app)
+[![GitHub](https://img.shields.io/badge/GitHub-Reposit%C3%B3rio-181717?style=for-the-badge&logo=github)](https://github.com/seu-usuario/cbf-almoxarifado)
+
+![Dashboard](docs/screenshots/dashboard.svg)
+
+### Galeria rápida
+
+| Requisições | Movimentações | Relatórios |
+|---|---|---|
+| ![Requisições](docs/screenshots/requisicoes.svg) | ![Movimentações](docs/screenshots/movimentacoes.svg) | ![Relatórios](docs/screenshots/relatorios.svg) |
+
+> Os arquivos em `docs/screenshots/*.svg` são **placeholders** feitos para não
+> quebrar os links do README. Substitua-os por capturas reais da demo antes de
+> publicar (veja [`docs/screenshots/README.md`](docs/screenshots/README.md)).
+
 Sistema web **full stack de gestão de almoxarifado**, desenvolvido sob medida para uma operação real: controle de materiais e estoque, requisições multi-item com fluxo de aprovação hierárquico, empréstimos com rastreio de devolução, pedidos de compra integrados ao recebimento de estoque, relatórios analíticos e exportações em XLSX/CSV/PDF.
 
 ---
@@ -402,6 +427,7 @@ Acesse **http://localhost:3000**. Faça login com o ADMIN do seed; novos cadastr
 | `npm run test` | Testes unitários das regras críticas (Vitest) |
 | `npm run test:watch` | Modo watch do Vitest |
 | `npm run seed` | Cria o usuário ADMIN inicial (`dotenv -e .env.local -- tsx prisma/seed.ts`) |
+| `npm run seed:demo` | Popula o **ambiente demo** com dados fictícios (exige `DEMO_ENV=true`; não usa `.env.local`) |
 | `npx prisma migrate deploy` | Aplica as migrações versionadas no banco |
 
 ### Qualidade e CI
@@ -414,6 +440,41 @@ O repositório tem **GitHub Actions CI** (`.github/workflows/ci.yml`) que roda, 
 |---|---|
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Cliente Upstash Redis (`src/lib/redis.ts`) — reservado para cache/rate limiting |
 | `NEXT_PUBLIC_APP_URL` | URL base explícita usada na geração de PDFs (fallbacks: `VERCEL_URL` → `localhost:3000`) |
+
+---
+
+## 🧪 Ambiente de demonstração (portfólio)
+
+Existe um seed exclusivo (**`prisma/demo-seed.ts`**) que popula um banco **demo
+isolado** com dados **100% fictícios** — nenhum material, pessoa, estoque ou
+requisição real da operação.
+
+- **Isolamento**: a demo usa `DATABASE_URL`/`DIRECT_URL` próprios e só roda com
+  `DEMO_ENV=true`. O seed é idempotente (limpa e recria) e **não** é executado
+  contra a produção.
+- **Identidade neutra**: nenhuma `ConfiguracaoVisual` é criada — o tema usa o
+  default "Almoxarifado", sem logos da organização real no portfólio.
+- **Papéis exploráveis**: ADMIN, GESTOR, SUPERVISOR, ALMOXARIFE e SOLICITANTE.
+- **Login demo**: com `NEXT_PUBLIC_DEMO_ENABLED=true`, o cartão
+  “Credenciais de demonstração” é exibido na tela de login.
+
+Rodar a demo localmente:
+
+```bash
+# PowerShell (bash: use export VAR="...")
+$env:DEMO_ENV="true"
+$env:DATABASE_URL="postgresql://...banco-DEMO..."
+$env:DIRECT_URL="postgresql://...banco-DEMO..."
+$env:NEXT_PUBLIC_SUPABASE_URL="https://demo.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY="<service-role>"
+$env:DEMO_PASSWORD="Demo@1234"
+
+npx prisma migrate deploy
+npm run seed:demo
+```
+
+Instruções completas (recursos, env, contas e deploy na Vercel) em
+**”[`docs/DEPLOY_DEMO.md`](docs/DEPLOY_DEMO.md)”**.
 
 ---
 

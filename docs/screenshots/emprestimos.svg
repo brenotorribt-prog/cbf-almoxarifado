@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+  <rect width="1280" height="800" fill="#060d1f"/>
+  <rect x="0" y="0" width="1280" height="6" fill="#00B347"/>
+  <text x="640" y="380" font-size="48" fill="#e6ebf5" text-anchor="middle" font-family="Segoe UI, sans-serif">Empréstimos</text>
+  <text x="640" y="430" font-size="22" fill="#8fa3bf" text-anchor="middle" font-family="Segoe UI, sans-serif">Placeholder — substituir por captura real</text>
+  <text x="640" y="470" font-size="16" fill="#5c72a0" text-anchor="middle" font-family="Segoe UI, sans-serif">docs/screenshots/emprestimos.svg</text>
+</svg>
