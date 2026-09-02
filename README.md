@@ -17,7 +17,7 @@ Experimente o sistema em **30 segundos**, sem cadastro nem instalação:
 [![Demo Online](https://img.shields.io/badge/Demo-Online-0F172A?style=for-the-badge&link=https://demo-almoxarifado-wheat.vercel.app/)](https://demo-almoxarifado-wheat.vercel.app/)
 [![GitHub](https://img.shields.io/badge/GitHub-Reposit%C3%B3rio-181717?style=for-the-badge&logo=github)](https://github.com/brenotorribt-prog/cbf-almoxarifado)
 
-> 💡 **Login demo** → `demo@almoxarifado.com` / `Demo@1234`
+
 >
 > A demo usa um **banco e Supabase exclusivos**, populados com dados
 > **100% fictícios** (materiais, pessoas, estoques, requisições, empréstimos,
@@ -28,13 +28,10 @@ Experimente o sistema em **30 segundos**, sem cadastro nem instalação:
 
 | | | |
 |---|---|---|
-| ![Dashboard](docs/screenshots/dashboard.svg) | ![Materiais](docs/screenshots/materiais.svg) | ![Requisições](docs/screenshots/requisicoes.svg) |
-| ![Movimentações](docs/screenshots/movimentacoes.svg) | ![Empréstimos](docs/screenshots/emprestimos.svg) | ![Relatórios](docs/screenshots/relatorios.svg) |
-| | ![Requisição detalhe](docs/screenshots/requisicao-detalhe.svg) | |
+| ![Dashboard](docs/screenshots/dashboard.png) | ![Materiais](docs/screenshots/materiais.png) | ![Requisições](docs/screenshots/requisicoes.png) |
+| ![Movimentações](docs/screenshots/movimentacoes.png) | ![Empréstimos](docs/screenshots/emprestimos.png) | ![Relatórios](docs/screenshots/relatorios.png) |
+| | ![Requisição detalhe](docs/screenshots/requisicao-detalhe.png) | |
 
-> 📸 As imagens em `docs/screenshots/` são placeholders (SVG) enquanto não
-> forem substituídas por capturas reais da demo publicada. Para gerar as versões
-> `.png`, siga as instruções em [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 Sistema web **full stack de gestão de almoxarifado**, desenvolvido sob medida para uma operação real: controle de materiais e estoque, requisições multi-item com fluxo de aprovação hierárquico, empréstimos com rastreio de devolução, pedidos de compra integrados ao recebimento de estoque, relatórios analíticos e exportações em XLSX/CSV/PDF.
 
