@@ -12,26 +12,29 @@
 
 ## 🚀 Demonstração
 
-> [!NOTE]
-> **A demo (publicada) ainda não existe.** O link abaixo é um **placeholder**
-> para a URL que aparecerá depois do deploy do ambiente demo
-> (instruções completas em [`docs/DEPLOY_DEMO.md`](docs/DEPLOY_DEMO.md)).
-> Enquanto isso, você pode rodar a demo localmente com dados **100% fictícios**.
+Experimente o sistema em **30 segundos**, sem cadastro nem instalação:
 
-[![Demo Online](https://img.shields.io/badge/Demo-Em%20breve-8A9CC4?style=for-the-badge)](https://cbf-almoxarifado-demo.vercel.app)
-[![GitHub](https://img.shields.io/badge/GitHub-Reposit%C3%B3rio-181717?style=for-the-badge&logo=github)](https://github.com/seu-usuario/cbf-almoxarifado)
+[![Demo Online](https://img.shields.io/badge/Demo-Online-0F172A?style=for-the-badge&link=https://demo-almoxarifado-wheat.vercel.app/)](https://demo-almoxarifado-wheat.vercel.app/)
+[![GitHub](https://img.shields.io/badge/GitHub-Reposit%C3%B3rio-181717?style=for-the-badge&logo=github)](https://github.com/brenotorribt-prog/cbf-almoxarifado)
 
-![Dashboard](docs/screenshots/dashboard.svg)
+> 💡 **Login demo** → `demo@almoxarifado.com` / `Demo@1234`
+>
+> A demo usa um **banco e Supabase exclusivos**, populados com dados
+> **100% fictícios** (materiais, pessoas, estoques, requisições, empréstimos,
+> compras, notificações). Nenhum dado real da operação está presente
+> (veja [`docs/DEPLOY_DEMO.md`](docs/DEPLOY_DEMO.md)).
 
 ### Galeria rápida
 
-| Requisições | Movimentações | Relatórios |
+| | | |
 |---|---|---|
-| ![Requisições](docs/screenshots/requisicoes.svg) | ![Movimentações](docs/screenshots/movimentacoes.svg) | ![Relatórios](docs/screenshots/relatorios.svg) |
+| ![Dashboard](docs/screenshots/dashboard.svg) | ![Materiais](docs/screenshots/materiais.svg) | ![Requisições](docs/screenshots/requisicoes.svg) |
+| ![Movimentações](docs/screenshots/movimentacoes.svg) | ![Empréstimos](docs/screenshots/emprestimos.svg) | ![Relatórios](docs/screenshots/relatorios.svg) |
+| | ![Requisição detalhe](docs/screenshots/requisicao-detalhe.svg) | |
 
-> Os arquivos em `docs/screenshots/*.svg` são **placeholders** feitos para não
-> quebrar os links do README. Substitua-os por capturas reais da demo antes de
-> publicar (veja [`docs/screenshots/README.md`](docs/screenshots/README.md)).
+> 📸 As imagens em `docs/screenshots/` são placeholders (SVG) enquanto não
+> forem substituídas por capturas reais da demo publicada. Para gerar as versões
+> `.png`, siga as instruções em [`docs/screenshots/README.md`](docs/screenshots/README.md).
 
 Sistema web **full stack de gestão de almoxarifado**, desenvolvido sob medida para uma operação real: controle de materiais e estoque, requisições multi-item com fluxo de aprovação hierárquico, empréstimos com rastreio de devolução, pedidos de compra integrados ao recebimento de estoque, relatórios analíticos e exportações em XLSX/CSV/PDF.
 

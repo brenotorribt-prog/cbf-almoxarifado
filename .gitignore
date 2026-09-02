@@ -50,3 +50,19 @@ next-env.d.ts
 skills-lock.json
 contexto.md
 scripts/
+scripts/
+
+# ---------------------------------------------------------------
+# Portfólio público no GitHub — proteção contra exposure de dados
+# ---------------------------------------------------------------
+# Credenciais e secrets: garantir que nunca vazem (já coberto por .env* acima,
+# reforçado aqui para clareza).
+.env.local
+secrets/
+*.pem
+
+# PDFs exportados podem conter informações sensíveis — não commitar.
+docs/*.pdf
+
+# Screenshots grandes gerados manualmente — usar versões otimizadas no README.
+# (os *.png em docs/screenshots/ são versionados deliberadamente.)
