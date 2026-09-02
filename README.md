@@ -10,13 +10,21 @@
 
 ---
 
-## 🚀 Demonstração
+## 🚀 Veja funcionando agora
 
-Experimente o sistema em **30 segundos**, sem cadastro nem instalação:
+Sem cadastro, sem instalação — acesse com um usuário de demonstração e explore o sistema completo em menos de 30 segundos.
 
-[![Demo Online](https://img.shields.io/badge/Demo-Online-0F172A?style=for-the-badge&link=https://demo-almoxarifado-wheat.vercel.app/)](https://demo-almoxarifado-wheat.vercel.app/)
-[![GitHub](https://img.shields.io/badge/GitHub-Reposit%C3%B3rio-181717?style=for-the-badge&logo=github)](https://github.com/brenotorribt-prog/cbf-almoxarifado)
+<p align="center">
+  <a href="https://demo-almoxarifado-wheat.vercel.app/">
+    <img src="https://img.shields.io/badge/▶ ACESSAR DEMO-19AE47?style=for-the-badge&logoColor=white" alt="Acessar demonstração online" />
+  </a>
+</p>
 
+<p align="center">
+  <sub>👉 <a href="https://demo-almoxarifado-wheat.vercel.app/">demo-almoxarifado-wheat.vercel.app</a> — as credenciais de acesso aparecem direto na tela de login</sub>
+</p>
+
+[![GitHub](https://img.shields.io/badge/Código%20fonte-GitHub-181717?style=flat-square&logo=github)](https://github.com/brenotorribt-prog/cbf-almoxarifado)
 
 >
 > A demo usa um **banco e Supabase exclusivos**, populados com dados
